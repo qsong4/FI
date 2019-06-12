@@ -8,9 +8,9 @@ class Hparams:
 
     # train
     ## files
-    parser.add_argument('--train', default='./data/train.tsv',
+    parser.add_argument('--train', default='./data/train.csv',
                              help="training data")
-    parser.add_argument('--eval', default='./data/dev.tsv',
+    parser.add_argument('--eval', default='./data/dev.csv',
                              help="evaluation data")
 
     ## vocabulary

@@ -22,7 +22,7 @@ def prepro(train_file, dev_file, vocab_file):
 
 
 if __name__ == '__main__':
-    train_file = "./data/train.txt"
-    dev_file = "./data/dev.txt"
+    train_file = "./data/train.csv"
+    dev_file = "./data/dev.csv"
     vocab_file = "./data/esb.vocab"
     prepro(train_file, dev_file, vocab_file)

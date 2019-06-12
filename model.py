@@ -99,7 +99,8 @@ class Transformer:
         # interactivate
         x_inter = self.interactivate(x_repre, y_repre)
         y_inter = self.interactivate(y_repre, x_repre)
-
+        tf.print("x_inter", x_inter)
+        tf.print("y_inter", y_inter)
         input2fc = tf.concat(x_inter, y_inter)
         logits = self.fc(input2fc, match_dim=len(input2fc))
 
