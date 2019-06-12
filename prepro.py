@@ -11,7 +11,10 @@ def prepro(train_file, dev_file, vocab_file):
                 for i in sent1+sent2:
                     vocab_set.add(i)
                 label_set.add(label)
+    #0: <pad>, 1: <unk>, 2: <s>, 3: </s>
     with open(vocab_file, "w") as fw:
+        fw.write("<pad>"+"\n")
+        fw.write("<unk>"+"\n")
         for i in vocab_set:
             fw.write(i+'\n')
     print("labels: ", label_set)
