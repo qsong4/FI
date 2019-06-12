@@ -35,7 +35,7 @@ eval_init_op = iter.make_initializer(eval_batches)
 
 print("# Load model")
 m = Transformer(hp)
-loss, train_op, global_step, train_summaries = m.train(xs, ys, labels)
+loss, train_op, global_step, train_summaries= m.train(xs, ys, labels)
 y_hat, eval_summaries = m.eval(xs, ys)
 # y_hat = m.infer(xs, ys)
 

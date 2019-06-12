@@ -97,11 +97,12 @@ class Transformer:
         #y_repre = self.representation(ys)
 
         # interactivate
-        x_inter = self.interactivate(x_repre, y_repre)
-        y_inter = self.interactivate(y_repre, x_repre)
-        tf.print("x_inter", x_inter)
-        tf.print("y_inter", y_inter)
-        input2fc = tf.concat(x_inter, y_inter)
+        x_inter = self.interactivate(x_repre, y_repre)#(?, ?, 512)
+        y_inter = self.interactivate(y_repre, x_repre)#(?, ?, 512)
+        #print(y_inter.shape)
+        #print(x_inter.shape)
+        input2fc = tf.concat([x_inter, y_inter], 2)#(?, ?, 1024)
+        #print(input2fc.shape)
         logits = self.fc(input2fc, match_dim=len(input2fc))
 
         gold_matrix = tf.one_hot(labels, self.hp.num_class, dtype=tf.float32)
