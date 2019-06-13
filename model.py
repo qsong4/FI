@@ -1,11 +1,7 @@
-'''
-'''
 import tensorflow as tf
 
 from data_load import load_vocab
 from modules import get_token_embeddings, ff, positional_encoding, multihead_attention, label_smoothing, noam_scheme
-from utils import convert_idx_to_token_tensor
-from tqdm import tqdm
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -92,16 +88,68 @@ class FI:
         return dec
 
     def fc(self, inpt, match_dim):
-        w = tf.get_variable("w", [match_dim, self.hp.num_class], dtype=tf.float32)
-        b = tf.get_variable("b", [self.hp.num_class], dtype=tf.float32)
-        logits = tf.matmul(inpt, w) + b
+        with tf.variable_scope("fc", reuse=tf.AUTO_REUSE):
+            w = tf.get_variable("w", [match_dim, self.hp.num_class], dtype=tf.float32)
+            b = tf.get_variable("b", [self.hp.num_class], dtype=tf.float32)
+            logits = tf.matmul(inpt, w) + b
         # prob = tf.nn.softmax(logits)
 
         # gold_matrix = tf.one_hot(labels, self.hp.num_class, dtype=tf.float32)
         # loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=labels))
         return logits
 
+    # calculate classification accuracy
+    def _acc_op(self):
+        with tf.name_scope('acc'):
+            label_pred = tf.argmax(self.logits, 1, name='label_pred')
+            label_true = tf.argmax(self.y, 1, name='label_true')
+            correct_pred = tf.equal(tf.cast(label_pred, tf.int32), tf.cast(label_true, tf.int32))
+            accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32), name='Accuracy')
+        return accuracy
+
     def train(self, xs, ys, labels):
+        # representation
+        x_repre, y_repre = self.representation(xs, ys)
+        # y_repre = self.representation(ys)
+        #print(labels.shape)
+        # interactivate
+        x_inter = self.interactivate(x_repre, y_repre)  # (?, ?, 512)
+        y_inter = self.interactivate(y_repre, x_repre)  # (?, ?, 512)
+        # print(y_inter.shape)
+        # print(x_inter.shape)
+
+        x_avg = tf.reduce_mean(x_inter, axis=1)
+        y_avg = tf.reduce_mean(y_inter, axis=1)
+        x_max = tf.reduce_max(x_inter, axis=1)
+        y_max = tf.reduce_max(y_inter, axis=1)
+
+        input2fc = tf.concat([x_avg, x_max, y_avg, y_max], axis=1)
+        #input2fc = tf.concat([x_inter, y_inter], 2)  # (?, ?, 1024)
+        #print(input2fc.shape.as_list())
+
+        logits = self.fc(input2fc, match_dim=input2fc.shape.as_list()[-1])
+        #print(logits.shape)
+
+
+        #gold_matrix = tf.one_hot(labels, self.hp.num_class, dtype=tf.float32)
+        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=labels))
+
+        with tf.variable_scope('acc', reuse=tf.AUTO_REUSE):
+            label_pred = tf.argmax(logits, 1, name='label_pred')
+            label_true = tf.argmax(labels, 1, name='label_true')
+            correct_pred = tf.equal(tf.cast(label_pred, tf.int32), tf.cast(label_true, tf.int32))
+            accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32), name='Accuracy')
+
+
+        # train scheme
+        global_step = tf.train.get_or_create_global_step()
+        lr = noam_scheme(self.hp.lr, global_step, self.hp.warmup_steps)
+        optimizer = tf.train.AdamOptimizer(lr)
+        train_op = optimizer.minimize(loss, global_step=global_step)
+
+        return loss, train_op, global_step, accuracy
+
+    def eval(self, xs, ys, labels):
         # representation
         x_repre, y_repre = self.representation(xs, ys)
         # y_repre = self.representation(ys)
@@ -118,58 +166,16 @@ class FI:
         y_max = tf.reduce_max(y_inter, axis=1)
 
         input2fc = tf.concat([x_avg, x_max, y_avg, y_max], axis=1)
-        #input2fc = tf.concat([x_inter, y_inter], 2)  # (?, ?, 1024)
-        print(input2fc.shape.as_list())
 
         logits = self.fc(input2fc, match_dim=input2fc.shape.as_list()[-1])
 
-        gold_matrix = tf.one_hot(labels, self.hp.num_class, dtype=tf.float32)
-        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=gold_matrix))
+        #gold_matrix = tf.one_hot(labels, self.hp.num_class, dtype=tf.float32)
+        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=labels))
 
-        # train scheme
-        global_step = tf.train.get_or_create_global_step()
-        lr = noam_scheme(self.hp.lr, global_step, self.hp.warmup_steps)
-        optimizer = tf.train.AdamOptimizer(lr)
-        train_op = optimizer.minimize(loss, global_step=global_step)
+        with tf.variable_scope('acc', reuse=tf.AUTO_REUSE):
+            label_pred = tf.argmax(logits, 1, name='label_pred')
+            label_true = tf.argmax(labels, 1, name='label_true')
+            correct_pred = tf.equal(tf.cast(label_pred, tf.int32), tf.cast(label_true, tf.int32))
+            accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32), name='Accuracy')
 
-        tf.summary.scalar('lr', lr)
-        tf.summary.scalar("loss", loss)
-        tf.summary.scalar("global_step", global_step)
-
-        summaries = tf.summary.merge_all()
-
-        return loss, train_op, global_step, summaries
-
-    def eval(self, xs, ys):
-        '''Predicts autoregressively
-        At inference, input ys is ignored.
-        Returns
-        y_hat: (N, T2)
-        '''
-        decoder_inputs, y, y_seqlen, sents2 = ys
-
-        decoder_inputs = tf.ones((tf.shape(xs[0])[0], 1), tf.int32) * self.token2idx["<s>"]
-        ys = (decoder_inputs, y, y_seqlen, sents2)
-
-        memory, sents1 = self.encode(xs, False)
-
-        logging.info("Inference graph is being built. Please be patient.")
-        for _ in tqdm(range(self.hp.maxlen2)):
-            logits, y_hat, y, sents2 = self.decode(ys, memory, False)
-            if tf.reduce_sum(y_hat, 1) == self.token2idx["<pad>"]: break
-
-            _decoder_inputs = tf.concat((decoder_inputs, y_hat), 1)
-            ys = (_decoder_inputs, y, y_seqlen, sents2)
-
-        # monitor a random sample
-        n = tf.random_uniform((), 0, tf.shape(y_hat)[0] - 1, tf.int32)
-        sent1 = sents1[n]
-        pred = convert_idx_to_token_tensor(y_hat[n], self.idx2token)
-        sent2 = sents2[n]
-
-        tf.summary.text("sent1", sent1)
-        tf.summary.text("pred", pred)
-        tf.summary.text("sent2", sent2)
-        summaries = tf.summary.merge_all()
-
-        return y_hat, summaries
+        return accuracy, loss

@@ -1,16 +1,8 @@
 # -*- coding: utf-8 -*-
 #/usr/bin/python3
-'''
-Feb. 2019 by kyubyong park.
-kbpark.linguist@gmail.com.
-https://www.github.com/kyubyong/transformer
-
-Note.
-if safe, entities on the source side have the prefix 1, and the target side 2, for convenience.
-For example, fpath1, fpath2 means source file path and target file path, respectively.
-'''
 import tensorflow as tf
 from utils import calc_num_batches
+from sklearn.preprocessing import OneHotEncoder
 
 def load_vocab(vocab_fpath):
     '''Loads vocabulary file and returns idx<->token maps
@@ -54,7 +46,7 @@ def load_data(fpath, maxlen):
                 sent2 = sent2[len(sent2)-maxlen:]
             sents1.append(sent1)
             sents2.append(sent2)
-            labels.append(label)
+            labels.append([label])
     return sents1, sents2, labels
 
 
@@ -89,7 +81,11 @@ def generator_fn(sents1, sents2, labels, vocab_fpath):
         sent2: str. target sentence
     '''
     token2idx, _, _ = load_vocab(vocab_fpath)
-    for sent1, sent2, label in zip(sents1, sents2, labels):
+    enc = OneHotEncoder(sparse=False, categories='auto')
+    labelList = enc.fit_transform(labels)
+    #print(labels)
+    #print(labelList)
+    for sent1, sent2, label in zip(sents1, sents2, labelList):
         x = encode(sent1, token2idx)
         y = encode(sent2, token2idx)
 
@@ -117,7 +113,7 @@ def input_fn(sents1, sents2, labels, vocab_fpath, batch_size, shuffle=False):
 
     '''
     #((x, x_seqlen), (y, y_seqlen), (label))
-    shapes = (([None], ()), ([None], ()), (()))
+    shapes = (([None], ()), ([None], ()), ([None]))
     types = ((tf.int32, tf.int32), (tf.int32, tf.int32), tf.int32)
     paddings = ((0, 0), (0, 0), 0)
 
