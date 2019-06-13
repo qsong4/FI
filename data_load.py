@@ -21,10 +21,13 @@ def load_vocab(vocab_fpath):
     Returns
     two dictionaries.
     '''
-    vocab = [line.split()[0] for line in open(vocab_fpath, 'r').read().splitlines()]
+    with open(vocab_fpath, 'r') as fr:
+        vocab = [line.strip() for line in fr]
+
+    #vocab = [line.split()[0] for line in open(vocab_fpath, 'r').read().splitlines()]
     token2idx = {token: idx for idx, token in enumerate(vocab)}
     idx2token = {idx: token for idx, token in enumerate(vocab)}
-    return token2idx, idx2token
+    return token2idx, idx2token, len(vocab)
 
 def load_data(fpath, maxlen):
     '''Loads source and target data and filters out too lengthy samples.
@@ -85,7 +88,7 @@ def generator_fn(sents1, sents2, labels, vocab_fpath):
         y_seqlen: int. sequence length of y
         sent2: str. target sentence
     '''
-    token2idx, _ = load_vocab(vocab_fpath)
+    token2idx, _, _ = load_vocab(vocab_fpath)
     for sent1, sent2, label in zip(sents1, sents2, labels):
         x = encode(sent1, token2idx)
         y = encode(sent2, token2idx)

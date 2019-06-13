@@ -10,10 +10,17 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-class Transformer:
+
+class FI:
+    """
+    xs: tuple of
+        x: int32 tensor. (句子长度，)
+        x_seqlens. int32 tensor. (句子)
+    """
+
     def __init__(self, hp):
         self.hp = hp
-        self.token2idx, self.idx2token = load_vocab(hp.vocab)
+        self.token2idx, self.idx2token, self.hp.vocab_size = load_vocab(hp.vocab)
         self.embeddings = get_token_embeddings(self.hp.vocab_size, self.hp.d_model, zero_pad=True)
 
     def representation(self, xs, ys, training=True):
@@ -21,15 +28,18 @@ class Transformer:
             x, x_seqlen = xs
             y, y_seqlen = ys
 
+            #print(x)
+            #print(y)
+
             # embedding
-            encx = tf.nn.embedding_lookup(self.embeddings, x) # (N, T1, d_model)
-            encx *= self.hp.d_model**0.5 # scale
+            encx = tf.nn.embedding_lookup(self.embeddings, x)  # (N, T1, d_model)
+            encx *= self.hp.d_model ** 0.5  # scale
 
             encx += positional_encoding(encx, self.hp.maxlen)
             encx = tf.layers.dropout(encx, self.hp.dropout_rate, training=training)
 
-            ency = tf.nn.embedding_lookup(self.embeddings, y) # (N, T1, d_model)
-            ency *= self.hp.d_model**0.5 # scale
+            ency = tf.nn.embedding_lookup(self.embeddings, y)  # (N, T1, d_model)
+            ency *= self.hp.d_model ** 0.5  # scale
 
             ency += positional_encoding(ency, self.hp.maxlen)
             ency = tf.layers.dropout(ency, self.hp.dropout_rate, training=training)
@@ -41,22 +51,22 @@ class Transformer:
                 with tf.variable_scope("num_blocks_{}".format(i), reuse=tf.AUTO_REUSE):
                     # self-attention
                     encx = multihead_attention(queries=encx,
-                                              keys=encx,
-                                              values=encx,
-                                              num_heads=self.hp.num_heads,
-                                              dropout_rate=self.hp.dropout_rate,
-                                              training=training,
-                                              causality=False)
+                                               keys=encx,
+                                               values=encx,
+                                               num_heads=self.hp.num_heads,
+                                               dropout_rate=self.hp.dropout_rate,
+                                               training=training,
+                                               causality=False)
                     # feed forward
                     encx = ff(encx, num_units=[self.hp.d_ff, self.hp.d_model])
 
                     ency = multihead_attention(queries=ency,
-                                              keys=ency,
-                                              values=ency,
-                                              num_heads=self.hp.num_heads,
-                                              dropout_rate=self.hp.dropout_rate,
-                                              training=training,
-                                              causality=False)
+                                               keys=ency,
+                                               values=ency,
+                                               num_heads=self.hp.num_heads,
+                                               dropout_rate=self.hp.dropout_rate,
+                                               training=training,
+                                               causality=False)
 
                     # feed forward
                     ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
@@ -85,25 +95,33 @@ class Transformer:
         w = tf.get_variable("w", [match_dim, self.hp.num_class], dtype=tf.float32)
         b = tf.get_variable("b", [self.hp.num_class], dtype=tf.float32)
         logits = tf.matmul(inpt, w) + b
-        #prob = tf.nn.softmax(logits)
+        # prob = tf.nn.softmax(logits)
 
-        #gold_matrix = tf.one_hot(labels, self.hp.num_class, dtype=tf.float32)
-        #loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=labels))
+        # gold_matrix = tf.one_hot(labels, self.hp.num_class, dtype=tf.float32)
+        # loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=labels))
         return logits
 
     def train(self, xs, ys, labels):
         # representation
         x_repre, y_repre = self.representation(xs, ys)
-        #y_repre = self.representation(ys)
+        # y_repre = self.representation(ys)
 
         # interactivate
-        x_inter = self.interactivate(x_repre, y_repre)#(?, ?, 512)
-        y_inter = self.interactivate(y_repre, x_repre)#(?, ?, 512)
-        #print(y_inter.shape)
-        #print(x_inter.shape)
-        input2fc = tf.concat([x_inter, y_inter], 2)#(?, ?, 1024)
-        #print(input2fc.shape)
-        logits = self.fc(input2fc, match_dim=len(input2fc))
+        x_inter = self.interactivate(x_repre, y_repre)  # (?, ?, 512)
+        y_inter = self.interactivate(y_repre, x_repre)  # (?, ?, 512)
+        # print(y_inter.shape)
+        # print(x_inter.shape)
+
+        x_avg = tf.reduce_mean(x_inter, axis=1)
+        y_avg = tf.reduce_mean(y_inter, axis=1)
+        x_max = tf.reduce_max(x_inter, axis=1)
+        y_max = tf.reduce_max(y_inter, axis=1)
+
+        input2fc = tf.concat([x_avg, x_max, y_avg, y_max], axis=1)
+        #input2fc = tf.concat([x_inter, y_inter], 2)  # (?, ?, 1024)
+        print(input2fc.shape.as_list())
+
+        logits = self.fc(input2fc, match_dim=input2fc.shape.as_list()[-1])
 
         gold_matrix = tf.one_hot(labels, self.hp.num_class, dtype=tf.float32)
         loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=gold_matrix))
@@ -144,7 +162,7 @@ class Transformer:
             ys = (_decoder_inputs, y, y_seqlen, sents2)
 
         # monitor a random sample
-        n = tf.random_uniform((), 0, tf.shape(y_hat)[0]-1, tf.int32)
+        n = tf.random_uniform((), 0, tf.shape(y_hat)[0] - 1, tf.int32)
         sent1 = sents1[n]
         pred = convert_idx_to_token_tensor(y_hat[n], self.idx2token)
         sent2 = sents2[n]
@@ -155,4 +173,3 @@ class Transformer:
         summaries = tf.summary.merge_all()
 
         return y_hat, summaries
-
