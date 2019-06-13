@@ -8,6 +8,18 @@ import os
 from hparams import Hparams
 import math
 
+def evaluate(sess, eval_batches, num_eval_batches):
+    eval_init_op = iter.make_initializer(eval_batches)
+    sess.run(eval_init_op)
+    total_steps = 1 * num_eval_batches
+    total_acc = 0.0
+    total_loss = 0.0
+    for i in tqdm(range(_gs, total_steps + 1)):
+        dev_acc, dev_loss = sess.run([dev_accuracy_op, dev_loss_op])
+        total_acc += dev_acc
+        total_loss += dev_loss
+    return total_acc/total_steps, total_loss/total_steps
+
 print("# hparams")
 hparams = Hparams()
 parser = hparams.parser
@@ -24,7 +36,7 @@ iter = tf.data.Iterator.from_structure(train_batches.output_types, train_batches
 xs, ys, labels= iter.get_next()
 
 train_init_op = iter.make_initializer(train_batches)
-eval_init_op = iter.make_initializer(eval_batches)
+
 
 print("# Load model")
 m = FI(hp)
@@ -48,21 +60,28 @@ with tf.Session() as sess:
     total_steps = hp.num_epochs * num_train_batches
     _gs = sess.run(global_step)
     best_acc = 0
+    total_loss = 0.0
+    total_acc = 0.0
+    total_batch = 0
     for i in tqdm(range(_gs, total_steps+1)):
-        _, _gs = sess.run([train_op, global_step])
+        _, _loss, _accuracy, _gs = sess.run([train_op, loss_op, accuracy_op, global_step])
+        total_loss += _loss
+        total_acc += _accuracy
+        total_batch += 1
         epoch = math.ceil(_gs / num_train_batches)
 
         if _gs and _gs % num_train_batches == 0:
+
             print("\n")
             print("epoch {} is done".format(epoch))
-            _loss, _accuracy = sess.run([loss_op, accuracy_op]) # train loss and accuracy
             print("# train results")
-            print("训练集: loss {:g}, acc {:g} \n".format(dev_loss, dev_acc))
+            train_loss = total_loss/total_batch
+            train_acc = total_acc/total_batch
+            print("训练集: loss {:.4f}, acc {:.3f} \n".format(train_loss, train_acc))
             print("# test evaluation")
-            _, dev_acc, dev_loss = sess.run([eval_init_op, dev_accuracy_op, dev_loss_op])
-
+            dev_loss, dev_acc = evaluate(sess, eval_batches, num_eval_batches)
             print("# evaluation results")
-            print("验证集: loss {:g}, acc {:g} \n".format(dev_loss, dev_acc))
+            print("验证集: loss {:.4f}, acc {:.3f} \n".format(dev_loss, dev_acc))
             if dev_acc > best_acc:
                 best_acc = dev_acc
                 print("# save models")
@@ -70,6 +89,10 @@ with tf.Session() as sess:
                 ckpt_name = os.path.join(hp.modeldir, model_output)
                 saver.save(sess, ckpt_name, global_step=_gs)
                 print("after training of {} epochs, {} has been saved.".format(epoch, ckpt_name))
+
+            total_loss = 0.0
+            total_acc = 0.0
+            total_batch = 0
 
             print("# fall back to train mode")
             sess.run(train_init_op)
