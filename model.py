@@ -66,7 +66,6 @@ class FI:
 
                     # feed forward
                     ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
-
         return encx, ency
 
     def interactivate(self, a_repre, b_repre, training=True):
@@ -110,13 +109,10 @@ class FI:
     def train(self, xs, ys, labels):
         # representation
         x_repre, y_repre = self.representation(xs, ys)
-        # y_repre = self.representation(ys)
         #print(labels.shape)
         # interactivate
         x_inter = self.interactivate(x_repre, y_repre)  # (?, ?, 512)
         y_inter = self.interactivate(y_repre, x_repre)  # (?, ?, 512)
-        # print(y_inter.shape)
-        # print(x_inter.shape)
 
         x_avg = tf.reduce_mean(x_inter, axis=1)
         y_avg = tf.reduce_mean(y_inter, axis=1)
@@ -126,25 +122,23 @@ class FI:
         input2fc = tf.concat([x_avg, x_max, y_avg, y_max], axis=1)
         #input2fc = tf.concat([x_inter, y_inter], 2)  # (?, ?, 1024)
         #print(input2fc.shape.as_list())
-
         logits = self.fc(input2fc, match_dim=input2fc.shape.as_list()[-1])
         #print(logits.shape)
 
 
         #gold_matrix = tf.one_hot(labels, self.hp.num_class, dtype=tf.float32)
+        #aaa = tf.print(logits, ["LOGITS", logits])
         loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=labels))
-
         with tf.variable_scope('acc', reuse=tf.AUTO_REUSE):
             label_pred = tf.argmax(logits, 1, name='label_pred')
             label_true = tf.argmax(labels, 1, name='label_true')
             correct_pred = tf.equal(tf.cast(label_pred, tf.int32), tf.cast(label_true, tf.int32))
             accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32), name='Accuracy')
 
-
         # train scheme
         global_step = tf.train.get_or_create_global_step()
-        lr = noam_scheme(self.hp.lr, global_step, self.hp.warmup_steps)
-        optimizer = tf.train.AdamOptimizer(lr)
+        #lr = noam_scheme(self.hp.lr, global_step, self.hp.warmup_steps)
+        optimizer = tf.train.AdamOptimizer(self.hp.lr)
         train_op = optimizer.minimize(loss, global_step=global_step)
 
         return loss, train_op, global_step, accuracy

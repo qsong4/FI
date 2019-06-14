@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-#/usr/bin/python3
 import tensorflow as tf
 from utils import calc_num_batches
 from sklearn.preprocessing import OneHotEncoder
@@ -86,9 +84,8 @@ def generator_fn(sents1, sents2, labels, vocab_fpath):
     #print(labels)
     #print(labelList)
     for sent1, sent2, label in zip(sents1, sents2, labelList):
-        x = encode(sent1, token2idx)
-        y = encode(sent2, token2idx)
-
+        x = encode(sent1.decode(), token2idx)
+        y = encode(sent2.decode(), token2idx)
         x_seqlen, y_seqlen = len(x), len(y)
         yield ((x, x_seqlen), (y, y_seqlen), (label))
 

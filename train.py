@@ -8,17 +8,19 @@ import os
 from hparams import Hparams
 import math
 
-def evaluate(sess, eval_batches, num_eval_batches):
-    eval_init_op = iter.make_initializer(eval_batches)
+def evaluate(sess, eval_init_op, num_eval_batches):
+
     sess.run(eval_init_op)
     total_steps = 1 * num_eval_batches
     total_acc = 0.0
     total_loss = 0.0
     for i in tqdm(range(_gs, total_steps + 1)):
-        dev_acc, dev_loss = sess.run([dev_accuracy_op, dev_loss_op])
+        #dev_acc, dev_loss = sess.run([dev_accuracy_op, dev_loss_op])
+        dev_acc, dev_loss = sess.run([accuracy_op, loss_op])
+        #print("xxx", dev_loss)
         total_acc += dev_acc
         total_loss += dev_loss
-    return total_acc/total_steps, total_loss/total_steps
+    return total_loss/total_steps, total_acc/total_steps
 
 print("# hparams")
 hparams = Hparams()
@@ -36,12 +38,12 @@ iter = tf.data.Iterator.from_structure(train_batches.output_types, train_batches
 xs, ys, labels= iter.get_next()
 
 train_init_op = iter.make_initializer(train_batches)
-
+eval_init_op = iter.make_initializer(eval_batches)
 
 print("# Load model")
 m = FI(hp)
 loss_op, train_op, global_step, accuracy_op = m.train(xs, ys, labels)
-dev_accuracy_op, dev_loss_op = m.eval(xs, ys, labels)
+#dev_accuracy_op, dev_loss_op = m.eval(xs, ys, labels)
 # y_hat = m.infer(xs, ys)
 
 print("# Session")
@@ -79,7 +81,7 @@ with tf.Session() as sess:
             train_acc = total_acc/total_batch
             print("训练集: loss {:.4f}, acc {:.3f} \n".format(train_loss, train_acc))
             print("# test evaluation")
-            dev_loss, dev_acc = evaluate(sess, eval_batches, num_eval_batches)
+            dev_loss, dev_acc = evaluate(sess, eval_init_op, num_eval_batches)
             print("# evaluation results")
             print("验证集: loss {:.4f}, acc {:.3f} \n".format(dev_loss, dev_acc))
             if dev_acc > best_acc:
