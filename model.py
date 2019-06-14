@@ -17,7 +17,7 @@ class FI:
     def __init__(self, hp):
         self.hp = hp
         self.token2idx, self.idx2token, self.hp.vocab_size = load_vocab(hp.vocab)
-        self.embeddings = get_token_embeddings(self.hp.vocab_size, self.hp.d_model, zero_pad=True)
+        self.embeddings = get_token_embeddings(self.hp.vocab_size, self.hp.d_model, zero_pad=False)
 
     def representation(self, xs, ys, training=True):
         with tf.variable_scope("representation", reuse=tf.AUTO_REUSE):

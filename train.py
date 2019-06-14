@@ -14,7 +14,7 @@ def evaluate(sess, eval_init_op, num_eval_batches):
     total_steps = 1 * num_eval_batches
     total_acc = 0.0
     total_loss = 0.0
-    for i in tqdm(range(_gs, total_steps + 1)):
+    for i in tqdm(range(total_steps + 1)):
         #dev_acc, dev_loss = sess.run([dev_accuracy_op, dev_loss_op])
         dev_acc, dev_loss = sess.run([accuracy_op, loss_op])
         #print("xxx", dev_loss)
@@ -35,7 +35,7 @@ eval_batches, num_eval_batches, num_eval_samples = get_batch(hp.eval, hp.maxlen,
 
 # create a iterator of the correct shape and type
 iter = tf.data.Iterator.from_structure(train_batches.output_types, train_batches.output_shapes)
-xs, ys, labels= iter.get_next()
+xs, ys, labels = iter.get_next()
 
 train_init_op = iter.make_initializer(train_batches)
 eval_init_op = iter.make_initializer(eval_batches)
@@ -75,23 +75,33 @@ with tf.Session() as sess:
         if _gs and _gs % num_train_batches == 0:
 
             print("\n")
-            print("epoch {} is done".format(epoch))
+            print("<<<<<<<<<< epoch {} is done >>>>>>>>>>".format(epoch))
             print("# train results")
             train_loss = total_loss/total_batch
             train_acc = total_acc/total_batch
             print("训练集: loss {:.4f}, acc {:.3f} \n".format(train_loss, train_acc))
-            print("# test evaluation")
             dev_loss, dev_acc = evaluate(sess, eval_init_op, num_eval_batches)
+            print("\n")
             print("# evaluation results")
             print("验证集: loss {:.4f}, acc {:.3f} \n".format(dev_loss, dev_acc))
+
+            #save model each epoch
+            model_output = hp.model_path % (epoch, dev_loss, dev_acc)
+            ckpt_name = os.path.join(hp.modeldir, model_output)
+            saver.save(sess, ckpt_name, global_step=_gs)
+            print("training of {} epochs, {} has been saved.".format(epoch, ckpt_name))
+
+            """
+            #save model when get best acc at dev set
             if dev_acc > best_acc:
                 best_acc = dev_acc
                 print("# save models")
                 model_output = hp.model_path % (epoch, dev_loss, dev_acc)
                 ckpt_name = os.path.join(hp.modeldir, model_output)
                 saver.save(sess, ckpt_name, global_step=_gs)
-                print("after training of {} epochs, {} has been saved.".format(epoch, ckpt_name))
-
+                print("training of {} epochs, {} has been saved.".format(epoch, ckpt_name))
+            """
+            print("**************************************")
             total_loss = 0.0
             total_acc = 0.0
             total_batch = 0
