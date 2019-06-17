@@ -24,6 +24,7 @@ class Hparams:
     parser.add_argument('--batch_size', default=1, type=int)
     parser.add_argument('--eval_batch_size', default=128, type=int)
 
+    #learning rate 0.0003 is too high
     parser.add_argument('--lr', default=0.0003, type=float, help="learning rate")
     parser.add_argument('--warmup_steps', default=4000, type=int)
     parser.add_argument('--num_epochs', default=1, type=int)
