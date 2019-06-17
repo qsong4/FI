@@ -2,6 +2,7 @@ import tensorflow as tf
 from utils import calc_num_batches
 from sklearn.preprocessing import OneHotEncoder
 
+
 def load_vocab(vocab_fpath):
     '''Loads vocabulary file and returns idx<->token maps
     vocab_fpath: string. vocabulary file path.
@@ -14,10 +15,11 @@ def load_vocab(vocab_fpath):
     with open(vocab_fpath, 'r') as fr:
         vocab = [line.strip() for line in fr]
 
-    #vocab = [line.split()[0] for line in open(vocab_fpath, 'r').read().splitlines()]
+    # vocab = [line.split()[0] for line in open(vocab_fpath, 'r').read().splitlines()]
     token2idx = {token: idx for idx, token in enumerate(vocab)}
     idx2token = {idx: token for idx, token in enumerate(vocab)}
     return token2idx, idx2token, len(vocab)
+
 
 def load_data(fpath, maxlen):
     '''Loads source and target data and filters out too lengthy samples.
@@ -39,9 +41,9 @@ def load_data(fpath, maxlen):
             sent2 = content[1]
             label = int(content[2])
             if len(sent1) > maxlen:
-                sent1 = sent1[len(sent1)-maxlen:]
+                sent1 = sent1[len(sent1) - maxlen:]
             if len(sent2) > maxlen:
-                sent2 = sent2[len(sent2)-maxlen:]
+                sent2 = sent2[len(sent2) - maxlen:]
             sents1.append(sent1)
             sents2.append(sent2)
             labels.append([label])
@@ -60,6 +62,7 @@ def encode(inp, dict):
 
     x = [dict.get(t, dict["<unk>"]) for t in inp]
     return x
+
 
 def generator_fn(sents1, sents2, labels, vocab_fpath):
     '''Generates training / evaluation data
@@ -81,13 +84,23 @@ def generator_fn(sents1, sents2, labels, vocab_fpath):
     token2idx, _, _ = load_vocab(vocab_fpath)
     enc = OneHotEncoder(sparse=False, categories='auto')
     labelList = enc.fit_transform(labels)
-    #print(labels)
-    #print(labelList)
+    # print(labels)
+    # print(labelList)
     for sent1, sent2, label in zip(sents1, sents2, labelList):
         x = encode(sent1.decode(), token2idx)
         y = encode(sent2.decode(), token2idx)
+        #x_seqlen, y_seqlen = len(x), len(y)
+        yield (x, y, label)
+
+
+def generator_fn_infer(sents1, sents2, vocab_fpath):
+    token2idx, _, _ = load_vocab(vocab_fpath)
+    for sent1, sent2 in zip(sents1, sents2):
+        x = encode(sent1.decode(), token2idx)
+        y = encode(sent2.decode(), token2idx)
         x_seqlen, y_seqlen = len(x), len(y)
-        yield ((x, x_seqlen), (y, y_seqlen), (label))
+        yield (x, y)
+
 
 def input_fn(sents1, sents2, labels, vocab_fpath, batch_size, shuffle=False):
     '''Batchify data
@@ -109,10 +122,10 @@ def input_fn(sents1, sents2, labels, vocab_fpath, batch_size, shuffle=False):
         sents2: str tensor. (N,)
 
     '''
-    #((x, x_seqlen), (y, y_seqlen), (label))
-    shapes = (([None], ()), ([None], ()), ([None]))
-    types = ((tf.int32, tf.int32), (tf.int32, tf.int32), tf.int32)
-    paddings = ((0, 0), (0, 0), 0)
+    # ((x, x_seqlen), (y, y_seqlen), (label))
+    shapes = ([None], [None], [None])
+    types = (tf.int32, tf.int32, tf.int32)
+    paddings = (0, 0, 0)
 
     dataset = tf.data.Dataset.from_generator(
         generator_fn,
@@ -120,13 +133,32 @@ def input_fn(sents1, sents2, labels, vocab_fpath, batch_size, shuffle=False):
         output_types=types,
         args=(sents1, sents2, labels, vocab_fpath))  # <- arguments for generator_fn. converted to np string arrays
 
-    if shuffle: # for training
-        dataset = dataset.shuffle(128*batch_size)
+    if shuffle:  # for training
+        dataset = dataset.shuffle(128 * batch_size)
 
     dataset = dataset.repeat()  # iterate forever
     dataset = dataset.padded_batch(batch_size, shapes, paddings).prefetch(1)
 
     return dataset
+
+
+def input_fn_infer(sents1, sents2, vocab_fpath, batch_size):
+    # ((x, x_seqlen), (y, y_seqlen))
+    shapes = ([None], [None])
+    types = (tf.int32, tf.int32)
+    paddings = (0, 0)
+
+    dataset = tf.data.Dataset.from_generator(
+        generator_fn_infer,
+        output_shapes=shapes,
+        output_types=types,
+        args=(sents1, sents2, vocab_fpath))  # <- arguments for generator_fn. converted to np string arrays
+
+    #dataset = dataset.repeat()  # iterate forever
+    dataset = dataset.padded_batch(batch_size, shapes, paddings).prefetch(1)
+
+    return dataset
+
 
 def get_batch(fpath, maxlen, vocab_fpath, batch_size, shuffle=False):
     '''Gets training / evaluation mini-batches
@@ -145,3 +177,8 @@ def get_batch(fpath, maxlen, vocab_fpath, batch_size, shuffle=False):
     batches = input_fn(sents1, sents2, labels, vocab_fpath, batch_size, shuffle=shuffle)
     num_batches = calc_num_batches(len(sents1), batch_size)
     return batches, num_batches, len(sents1)
+
+
+def get_batch_infer(sents1, sents2, vocab_fpath, batch_size):
+    batches = input_fn_infer(sents1, sents2, vocab_fpath, batch_size)
+    return batches

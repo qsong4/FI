@@ -3,7 +3,7 @@ import tensorflow as tf
 from model import FI
 from tqdm import tqdm
 from data_load import get_batch
-from utils import save_hparams, save_variable_specs, get_hypotheses, calc_bleu
+from utils import save_variable_specs
 import os
 from hparams import Hparams
 import math
@@ -11,12 +11,14 @@ import math
 def evaluate(sess, eval_init_op, num_eval_batches):
 
     sess.run(eval_init_op)
+    x, y, labels = sess.run(data_element)
+    feed_dict = m.create_feed_dict(x, y, labels)
     total_steps = 1 * num_eval_batches
     total_acc = 0.0
     total_loss = 0.0
     for i in tqdm(range(total_steps + 1)):
         #dev_acc, dev_loss = sess.run([dev_accuracy_op, dev_loss_op])
-        dev_acc, dev_loss = sess.run([accuracy_op, loss_op])
+        dev_acc, dev_loss = sess.run([accuracy_op, loss_op], feed_dict=feed_dict)
         #print("xxx", dev_loss)
         total_acc += dev_acc
         total_loss += dev_loss
@@ -35,14 +37,14 @@ eval_batches, num_eval_batches, num_eval_samples = get_batch(hp.eval, hp.maxlen,
 
 # create a iterator of the correct shape and type
 iter = tf.data.Iterator.from_structure(train_batches.output_types, train_batches.output_shapes)
-xs, ys, labels = iter.get_next()
+data_element = iter.get_next()
 
 train_init_op = iter.make_initializer(train_batches)
 eval_init_op = iter.make_initializer(eval_batches)
 
 print("# Load model")
 m = FI(hp)
-loss_op, train_op, global_step, accuracy_op = m.train(xs, ys, labels)
+loss_op, train_op, global_step, accuracy_op, _ = m.build_model()
 #dev_accuracy_op, dev_loss_op = m.eval(xs, ys, labels)
 # y_hat = m.infer(xs, ys)
 
@@ -66,7 +68,10 @@ with tf.Session() as sess:
     total_acc = 0.0
     total_batch = 0
     for i in tqdm(range(_gs, total_steps+1)):
-        _, _loss, _accuracy, _gs = sess.run([train_op, loss_op, accuracy_op, global_step])
+        x, y, labels = sess.run(data_element)
+        #print(x)
+        feed_dict = m.create_feed_dict(x, y, labels)
+        _, _loss, _accuracy, _gs = sess.run([train_op, loss_op, accuracy_op, global_step],feed_dict=feed_dict)
         total_loss += _loss
         total_acc += _accuracy
         total_batch += 1

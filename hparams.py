@@ -13,7 +13,7 @@ class Hparams:
     parser.add_argument('--eval', default='./data/dev.csv',
                              help="evaluation data")
 
-    parser.add_argument('--model_path', default='./model/FImath%02dL%.2fA%.2f')
+    parser.add_argument('--model_path', default='FImatch%02dL%.2fA%.2f')
     parser.add_argument('--modeldir', default='./model')
 
     ## vocabulary
@@ -21,7 +21,7 @@ class Hparams:
                         help="vocabulary file path")
 
     # training scheme
-    parser.add_argument('--batch_size', default=128, type=int)
+    parser.add_argument('--batch_size', default=1, type=int)
     parser.add_argument('--eval_batch_size', default=128, type=int)
 
     parser.add_argument('--lr', default=0.0003, type=float, help="learning rate")

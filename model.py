@@ -18,11 +18,31 @@ class FI:
         self.hp = hp
         self.token2idx, self.idx2token, self.hp.vocab_size = load_vocab(hp.vocab)
         self.embeddings = get_token_embeddings(self.hp.vocab_size, self.hp.d_model, zero_pad=False)
+        self.x = tf.placeholder(tf.int32, [None, None], name="text_x")
+        self.y = tf.placeholder(tf.int32, [None, None], name="text_y")
+        self.truth = tf.placeholder(tf.int32, [None, self.hp.num_class], name="truth")
 
-    def representation(self, xs, ys, training=True):
+    def create_feed_dict(self, x, y, truth):
+        feed_dict = {
+            self.x: x,
+            self.y: y,
+            self.truth: truth,
+        }
+
+        return feed_dict
+
+    def create_feed_dict_infer(self, x, y):
+        feed_dict = {
+            self.x: x,
+            self.y: y
+        }
+
+        return feed_dict
+
+    def representation(self, xs, training=True):
         with tf.variable_scope("representation", reuse=tf.AUTO_REUSE):
-            x, x_seqlen = xs
-            y, y_seqlen = ys
+            x = xs
+            #y, y_seqlen = ys
 
             #print(x)
             #print(y)
@@ -34,11 +54,11 @@ class FI:
             encx += positional_encoding(encx, self.hp.maxlen)
             encx = tf.layers.dropout(encx, self.hp.dropout_rate, training=training)
 
-            ency = tf.nn.embedding_lookup(self.embeddings, y)  # (N, T1, d_model)
-            ency *= self.hp.d_model ** 0.5  # scale
-
-            ency += positional_encoding(ency, self.hp.maxlen)
-            ency = tf.layers.dropout(ency, self.hp.dropout_rate, training=training)
+            # ency = tf.nn.embedding_lookup(self.embeddings, y)  # (N, T1, d_model)
+            # ency *= self.hp.d_model ** 0.5  # scale
+            #
+            # ency += positional_encoding(ency, self.hp.maxlen)
+            # ency = tf.layers.dropout(ency, self.hp.dropout_rate, training=training)
 
             ##TODO:add abcnn first layer attention
 
@@ -56,17 +76,17 @@ class FI:
                     # feed forward
                     encx = ff(encx, num_units=[self.hp.d_ff, self.hp.d_model])
 
-                    ency = multihead_attention(queries=ency,
-                                               keys=ency,
-                                               values=ency,
-                                               num_heads=self.hp.num_heads,
-                                               dropout_rate=self.hp.dropout_rate,
-                                               training=training,
-                                               causality=False)
-
-                    # feed forward
-                    ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
-        return encx, ency
+                    # ency = multihead_attention(queries=ency,
+                    #                            keys=ency,
+                    #                            values=ency,
+                    #                            num_heads=self.hp.num_heads,
+                    #                            dropout_rate=self.hp.dropout_rate,
+                    #                            training=training,
+                    #                            causality=False)
+                    #
+                    # # feed forward
+                    # ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
+        return encx
 
     def interactivate(self, a_repre, b_repre, training=True):
         with tf.variable_scope("interactivate", reuse=tf.AUTO_REUSE):
@@ -86,8 +106,8 @@ class FI:
                     dec = ff(dec, num_units=[self.hp.d_ff, self.hp.d_model])
         return dec
 
-    def fc(self, inpt, match_dim):
-        with tf.variable_scope("fc", reuse=tf.AUTO_REUSE):
+    def fc(self, inpt, match_dim, reuse=tf.AUTO_REUSE):
+        with tf.variable_scope("fc", reuse=reuse):
             w = tf.get_variable("w", [match_dim, self.hp.num_class], dtype=tf.float32)
             b = tf.get_variable("b", [self.hp.num_class], dtype=tf.float32)
             logits = tf.matmul(inpt, w) + b
@@ -106,9 +126,10 @@ class FI:
             accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32), name='Accuracy')
         return accuracy
 
-    def train(self, xs, ys, labels):
+    def build_model(self):
         # representation
-        x_repre, y_repre = self.representation(xs, ys)
+        x_repre = self.representation(self.x)
+        y_repre = self.representation(self.y)
         #print(labels.shape)
         # interactivate
         x_inter = self.interactivate(x_repre, y_repre)  # (?, ?, 512)
@@ -128,10 +149,10 @@ class FI:
 
         #gold_matrix = tf.one_hot(labels, self.hp.num_class, dtype=tf.float32)
         #aaa = tf.print(logits, ["LOGITS", logits])
-        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=labels))
+        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=self.truth))
         with tf.variable_scope('acc', reuse=tf.AUTO_REUSE):
             label_pred = tf.argmax(logits, 1, name='label_pred')
-            label_true = tf.argmax(labels, 1, name='label_true')
+            label_true = tf.argmax(self.truth, 1, name='label_true')
             correct_pred = tf.equal(tf.cast(label_pred, tf.int32), tf.cast(label_true, tf.int32))
             accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32), name='Accuracy')
 
@@ -141,16 +162,19 @@ class FI:
         optimizer = tf.train.AdamOptimizer(self.hp.lr)
         train_op = optimizer.minimize(loss, global_step=global_step)
 
-        return loss, train_op, global_step, accuracy
+        return loss, train_op, global_step, accuracy, label_pred
 
-    def eval(self, xs, ys, labels):
+
+    def predict_model(self):
+
         # representation
-        x_repre, y_repre = self.representation(xs, ys)
+        x_repre = self.representation(self.x, False)
+        y_repre = self.representation(self.y, False)
         # y_repre = self.representation(ys)
 
         # interactivate
-        x_inter = self.interactivate(x_repre, y_repre)  # (?, ?, 512)
-        y_inter = self.interactivate(y_repre, x_repre)  # (?, ?, 512)
+        x_inter = self.interactivate(x_repre, y_repre, False)  # (?, ?, 512)
+        y_inter = self.interactivate(y_repre, x_repre, False)  # (?, ?, 512)
         # print(y_inter.shape)
         # print(x_inter.shape)
 
@@ -161,15 +185,9 @@ class FI:
 
         input2fc = tf.concat([x_avg, x_max, y_avg, y_max], axis=1)
 
-        logits = self.fc(input2fc, match_dim=input2fc.shape.as_list()[-1])
-
-        #gold_matrix = tf.one_hot(labels, self.hp.num_class, dtype=tf.float32)
-        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=labels))
+        logits = self.fc(input2fc, match_dim=input2fc.shape.as_list()[-1], reuse=tf.AUTO_REUSE)
 
         with tf.variable_scope('acc', reuse=tf.AUTO_REUSE):
             label_pred = tf.argmax(logits, 1, name='label_pred')
-            label_true = tf.argmax(labels, 1, name='label_true')
-            correct_pred = tf.equal(tf.cast(label_pred, tf.int32), tf.cast(label_true, tf.int32))
-            accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32), name='Accuracy')
 
-        return accuracy, loss
+        return label_pred
