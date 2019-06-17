@@ -13,7 +13,7 @@ class Hparams:
     parser.add_argument('--eval', default='./data/dev.csv',
                              help="evaluation data")
 
-    parser.add_argument('--model_path', default='FImatch%02dL%.2fA%.2f')
+    parser.add_argument('--model_path', default='FImatchE%02dL%.2fA%.2f')
     parser.add_argument('--modeldir', default='./model')
 
     ## vocabulary
