@@ -1,0 +1,27 @@
+epoch 1 >>>>>>>>>>>
+training set : loss 0.3157, acc 0.855
+evl set : loss 0.1970, acc 0.929
+
+epoch 2 >>>>>>>>>>>
+training set : loss 0.1725, acc 0.925
+evl set : loss 0.1276, acc 0.948
+
+epoch 3 >>>>>>>>>>>
+training set : loss 0.1199, acc 0.949
+evl set : loss 0.0969, acc 0.959
+
+epoch 4 >>>>>>>>>>>
+training set : loss 0.0864, acc 0.965
+evl set : loss 0.0727, acc 0.973
+
+epoch 5 >>>>>>>>>>>
+training set : loss 0.0638, acc 0.975
+evl set : loss 0.489, acc 0.980
+
+'
+'
+'
+
+epoch 20 >>>>>>>>>>>
+training set : loss 0.0067, acc 0.998
+evl set : loss 0.0042, acc 0.999
