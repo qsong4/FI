@@ -37,9 +37,10 @@ def load_data(fpath, maxlen):
     with open(fpath, 'r') as fr:
         for line in fr:
             content = line.strip().split("\t")
-            sent1 = content[0]
-            sent2 = content[1]
-            label = int(content[2])
+            sent1 = content[0].lower()
+            sent2 = content[1].lower()
+            #label = int(content[2]) #cn data
+            label = content[2] #snli data
             if len(sent1) > maxlen:
                 sent1 = sent1[len(sent1) - maxlen:]
             if len(sent2) > maxlen:
@@ -59,8 +60,10 @@ def encode(inp, dict):
     Returns
     list of numbers
     '''
-
-    x = [dict.get(t, dict["<unk>"]) for t in inp]
+    #for cn dataset
+    #x = [dict.get(t, dict["<unk>"]) for t in inp]
+    #for snli dateset
+    x = [dict.get(t, dict["<unk>"]) for t in inp.split()]
     return x
 
 
@@ -85,7 +88,7 @@ def generator_fn(sents1, sents2, labels, vocab_fpath):
     enc = OneHotEncoder(sparse=False, categories='auto')
     labelList = enc.fit_transform(labels)
     # print(labels)
-    # print(labelList)
+    #print(labelList)
     for sent1, sent2, label in zip(sents1, sents2, labelList):
         x = encode(sent1.decode(), token2idx)
         y = encode(sent2.decode(), token2idx)

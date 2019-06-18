@@ -8,9 +8,9 @@ class Hparams:
 
     # train
     ## files
-    parser.add_argument('--train', default='./data/train.csv',
+    parser.add_argument('--train', default='./data/snli_train.tsv',
                              help="training data")
-    parser.add_argument('--eval', default='./data/dev.csv',
+    parser.add_argument('--eval', default='./data/snli_dev.tsv',
                              help="evaluation data")
 
     parser.add_argument('--model_path', default='FImatchE%02dL%.2fA%.2f')
@@ -40,7 +40,7 @@ class Hparams:
                         help="number of attention heads")
     parser.add_argument('--maxlen', default=50, type=int,
                         help="maximum length of a source sequence")
-    parser.add_argument('--num_class', default=2, type=int,
+    parser.add_argument('--num_class', default=3, type=int,
                         help="number of class")
     parser.add_argument('--dropout_rate', default=0.3, type=float)
 
