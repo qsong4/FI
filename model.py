@@ -158,8 +158,8 @@ class FI:
 
         # train scheme
         global_step = tf.train.get_or_create_global_step()
-        #lr = noam_scheme(self.hp.lr, global_step, self.hp.warmup_steps)
-        optimizer = tf.train.AdamOptimizer(self.hp.lr)
+        lr = noam_scheme(self.hp.lr, global_step, self.hp.warmup_steps)
+        optimizer = tf.train.AdamOptimizer(lr)
         train_op = optimizer.minimize(loss, global_step=global_step)
 
         return loss, train_op, global_step, accuracy, label_pred
