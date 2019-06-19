@@ -1,7 +1,22 @@
 import tensorflow as tf
 from utils import calc_num_batches
 from sklearn.preprocessing import OneHotEncoder
+import tqdm
+import numpy as np
 
+
+def loadGloVe(filename, emb_size):
+    embd = []
+    embd.append([0]*emb_size) # for pad
+    embd.append([1]*emb_size) # for unk
+    file = open(filename,'r')
+    for line in tqdm(file.readlines()):
+        row = line.strip().split(' ')
+        embd.append(row[1:])
+    print('Loaded GloVe!')
+    file.close()
+    embd = np.asarray(embd)
+    return embd
 
 def load_vocab(vocab_fpath):
     '''Loads vocabulary file and returns idx<->token maps
@@ -41,10 +56,12 @@ def load_data(fpath, maxlen):
             sent2 = content[1].lower()
             #label = int(content[2]) #cn data
             label = content[2] #snli data
-            if len(sent1) > maxlen:
-                sent1 = sent1[len(sent1) - maxlen:]
-            if len(sent2) > maxlen:
-                sent2 = sent2[len(sent2) - maxlen:]
+            if len(sent1.split()) > maxlen:
+                continue
+                #sent1 = sent1[len(sent1) - maxlen:]#for cn data
+            if len(sent2.split()) > maxlen:
+                continue
+                #sent2 = sent2[len(sent2) - maxlen:]#for cn data
             sents1.append(sent1)
             sents2.append(sent2)
             labels.append([label])

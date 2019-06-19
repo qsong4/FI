@@ -15,6 +15,7 @@ class Hparams:
 
     parser.add_argument('--model_path', default='FImatchE%02dL%.2fA%.2f')
     parser.add_argument('--modeldir', default='./model')
+    parser.add_argument('--vec_path', default='./data/vec/glove.840B.300d.txt')
 
     ## vocabulary
     parser.add_argument('--vocab', default='./data/esb.vocab',
@@ -23,6 +24,7 @@ class Hparams:
     # training scheme
     parser.add_argument('--batch_size', default=256, type=int)
     parser.add_argument('--eval_batch_size', default=256, type=int)
+    parser.add_argument('--preembedding', default=True, type=bool)
 
     #learning rate 0.0003 is too high
     parser.add_argument('--lr', default=0.0003, type=float, help="learning rate")
@@ -30,9 +32,10 @@ class Hparams:
     parser.add_argument('--num_epochs', default=20, type=int)
 
     # model
+    # This is also the word embedding size , and must can divide by head num.
     parser.add_argument('--d_model', default=256, type=int,
                         help="hidden dimension of interativate")
-    parser.add_argument('--d_ff', default=1024, type=int,
+    parser.add_argument('--d_ff', default=256, type=int,
                         help="hidden dimension of feedforward layer")
     parser.add_argument('--num_blocks', default=6, type=int,
                         help="number of encoder/decoder blocks")

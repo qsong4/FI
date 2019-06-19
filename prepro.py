@@ -24,6 +24,23 @@ def removePunc(inputStr):
     string = re.sub("[\s+\.\!\/_,$%^*(+\"\')]+|[+——()?“”！，。？、~@#￥%……&*]+'", "", inputStr)
     return string.strip()
 
+def genvocabGlove(inputfile, vocab_file):
+    vocab = []
+    vocab.append('<pad>')
+    vocab.append('<unk>')
+    file = open(inputfile, 'r')
+    for line in file.readlines():
+        row = line.strip().split(' ')
+        vocab.append(row[0])
+    print('Loaded GloVe!')
+    file.close()
+    with open(vocab_file, "w") as fw:
+        fw.write("<pad>"+"\n")
+        fw.write("<unk>"+"\n")
+        for i in vocab:
+            fw.write(i+'\n')
+    return vocab
+
 def prepro_snli(train_file, dev_file, vocab_file):
     vocab_set = set()
     label_set = set()
@@ -57,4 +74,5 @@ if __name__ == '__main__':
     dev_file = "./data/dev.csv"
     vocab_file = "./data/esb.vocab"
     #prepro(train_file, dev_file, vocab_file)
-    prepro_snli("./data/snli_train.tsv", "./data/snli_test.tsv", vocab_file)
+    #prepro_snli("./data/snli_train.tsv", "./data/snli_test.tsv", vocab_file)
+    genvocabGlove("./data/vec/glove.840B.300d.txt", vocab_file)

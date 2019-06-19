@@ -16,7 +16,7 @@ def evaluate(sess, eval_init_op, num_eval_batches):
     total_steps = 1 * num_eval_batches
     total_acc = 0.0
     total_loss = 0.0
-    for i in tqdm(range(total_steps + 1)):
+    for i in range(total_steps + 1):
         #dev_acc, dev_loss = sess.run([dev_accuracy_op, dev_loss_op])
         dev_acc, dev_loss = sess.run([accuracy_op, loss_op], feed_dict=feed_dict)
         #print("xxx", dev_loss)
