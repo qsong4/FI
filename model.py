@@ -16,6 +16,7 @@ class FI:
         self.token2idx, self.idx2token, self.hp.vocab_size = load_vocab(hp.vocab)
         self.embd = None
         if self.hp.preembedding:
+
             self.embd = loadGloVe(self.hp.vec_path, self.hp.d_model)
         self.embeddings = get_token_embeddings(self.embd, self.embd, self.hp.vocab_size, self.hp.d_model, zero_pad=False)
         self.x = tf.placeholder(tf.int32, [None, None], name="text_x")
