@@ -1,22 +1,41 @@
 import tensorflow as tf
 from utils import calc_num_batches
 from sklearn.preprocessing import OneHotEncoder
-import tqdm
+from tqdm import tqdm
 import numpy as np
+import re
 
+def loadGloVe(filename):
+    embd = np.load(filename)
+    return embd
 
-def loadGloVe(filename, emb_size):
-    embd = []
-    embd.append([0]*emb_size) # for pad
-    embd.append([1]*emb_size) # for unk
+def loadGloVe_2(filename, emb_size):
+    mu, sigma = 0, 0.1  # 均值与标准差
+    rarray = np.random.normal(mu, sigma, emb_size)
+    embd = {}
+    embd['<pad>'] = [0]*emb_size
+    embd['<unk>'] = list(rarray)
     file = open(filename,'r')
     for line in tqdm(file.readlines()):
-        row = line.strip().split(' ')
-        embd.append(row[1:])
-    print('Loaded GloVe!')
+        row = line.rstrip().split(' ')
+        if row[0] in embd.keys():
+            continue
+        else:
+            embd[row[0]] = row[1:]
     file.close()
-    embd = np.asarray(embd)
     return embd
+
+def preprocessVec(gloveFile, vocab_file, outfile):
+    emdb = loadGloVe_2(gloveFile, 300)
+    trimmd_embd = []
+    with open(vocab_file, 'r') as fr:
+        for line in fr:
+            word = line.rstrip()
+            if word in emdb:
+                trimmd_embd.append(emdb[word])
+            else:
+                trimmd_embd.append(emdb['<unk>'])
+    np.save(outfile, trimmd_embd)
 
 def load_vocab(vocab_fpath):
     '''Loads vocabulary file and returns idx<->token maps
@@ -67,6 +86,9 @@ def load_data(fpath, maxlen):
             labels.append([label])
     return sents1, sents2, labels
 
+def removePunc(inputStr):
+    string = re.sub(r"\W+", "", inputStr)
+    return string.strip()
 
 def encode(inp, dict):
     '''Converts string to number. Used for `generator_fn`.
@@ -80,7 +102,15 @@ def encode(inp, dict):
     #for cn dataset
     #x = [dict.get(t, dict["<unk>"]) for t in inp]
     #for snli dateset
-    x = [dict.get(t, dict["<unk>"]) for t in inp.split()]
+    x = []
+    for i in re.split(r"\W+", inp):
+        i = i.strip()
+        i = removePunc(i)
+        i = i.lower()
+        if i == "":
+            continue
+        x.append(dict.get(i, dict["<unk>"]))
+    #x = [dict.get(t, dict["<unk>"]) for t in re.split(r"\W+'", inp)]
     return x
 
 
@@ -202,3 +232,6 @@ def get_batch(fpath, maxlen, vocab_fpath, batch_size, shuffle=False):
 def get_batch_infer(sents1, sents2, vocab_fpath, batch_size):
     batches = input_fn_infer(sents1, sents2, vocab_fpath, batch_size)
     return batches
+
+if __name__ == '__main__':
+    preprocessVec("./data/vec/glove.840B.300d.txt", "./data/snli.vocab", "./data/vec/snil_trimmed_vec.npy")

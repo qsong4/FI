@@ -1,5 +1,5 @@
-num_params: 37484044
-shared_weight_matrix/weight_mat:0===(37650, 256)
+num_params: 8634124
+shared_weight_matrix/weight_mat:0===(85, 256)
 representation/num_blocks_0/multihead_attention/dense/kernel:0===(256, 256)
 representation/num_blocks_0/multihead_attention/dense_1/kernel:0===(256, 256)
 representation/num_blocks_0/multihead_attention/dense_2/kernel:0===(256, 256)
@@ -137,8 +137,8 @@ fc/b:0===(3,)
 global_step:0===()
 beta1_power:0===()
 beta2_power:0===()
-shared_weight_matrix/weight_mat/Adam:0===(37650, 256)
-shared_weight_matrix/weight_mat/Adam_1:0===(37650, 256)
+shared_weight_matrix/weight_mat/Adam:0===(85, 256)
+shared_weight_matrix/weight_mat/Adam_1:0===(85, 256)
 representation/num_blocks_0/multihead_attention/dense/kernel/Adam:0===(256, 256)
 representation/num_blocks_0/multihead_attention/dense/kernel/Adam_1:0===(256, 256)
 representation/num_blocks_0/multihead_attention/dense_1/kernel/Adam:0===(256, 256)

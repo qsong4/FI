@@ -21,7 +21,7 @@ def prepro(train_file, dev_file, vocab_file):
     print("labels: ", label_set)
 
 def removePunc(inputStr):
-    string = re.sub("[\s+\.\!\/_,$%^*(+\"\')]+|[+——()?“”！，。？、~@#￥%……&*]+'", "", inputStr)
+    string = re.sub(r"\W+", "", inputStr)
     return string.strip()
 
 def genvocabGlove(inputfile, vocab_file):
@@ -52,7 +52,8 @@ def prepro_snli(train_file, dev_file, vocab_file):
                 sent1 = content[0]
                 sent2 = content[1]
                 sent = sent1 + ' ' + sent2
-                for i in sent.split():
+                for i in re.split(r"\W+", sent):
+                    i = i.strip()
                     i = removePunc(i)
                     i = i.lower()
                     if i == "":
@@ -70,9 +71,9 @@ def prepro_snli(train_file, dev_file, vocab_file):
 
 
 if __name__ == '__main__':
-    train_file = "./data/train.csv"
-    dev_file = "./data/dev.csv"
-    vocab_file = "./data/esb.vocab"
+    train_file = "./data/snli_train.tsv"
+    dev_file = "./data/snli_dev.tsv"
+    vocab_file = "./data/snli.vocab"
     #prepro(train_file, dev_file, vocab_file)
-    #prepro_snli("./data/snli_train.tsv", "./data/snli_test.tsv", vocab_file)
-    genvocabGlove("./data/vec/glove.840B.300d.txt", vocab_file)
+    prepro_snli("./data/snli_train.tsv", "./data/snli_dev.tsv", vocab_file)
+    #genvocabGlove("./data/vec/glove.840B.300d.txt", vocab_file)
