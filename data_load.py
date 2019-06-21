@@ -13,7 +13,8 @@ def loadGloVe_2(filename, emb_size):
     mu, sigma = 0, 0.1  # 均值与标准差
     rarray = np.random.normal(mu, sigma, emb_size)
     embd = {}
-    embd['<pad>'] = [0]*emb_size
+    #embd['<pad>'] = [0]*emb_size
+    embd['<pad>'] = list(rarray)
     embd['<unk>'] = list(rarray)
     file = open(filename,'r')
     for line in tqdm(file.readlines()):

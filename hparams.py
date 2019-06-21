@@ -30,6 +30,7 @@ class Hparams:
     parser.add_argument('--lr', default=0.0003, type=float, help="learning rate")
     parser.add_argument('--warmup_steps', default=4000, type=int)
     parser.add_argument('--num_epochs', default=20, type=int)
+    parser.add_argument('--lambda_l2', default=0.004, type=float)
 
     # model
     # This is also the word embedding size , and must can divide by head num.

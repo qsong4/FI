@@ -186,6 +186,18 @@ class FI:
         global_step = tf.train.get_or_create_global_step()
         lr = noam_scheme(self.hp.lr, global_step, self.hp.warmup_steps)
         optimizer = tf.train.AdamOptimizer(lr)
+
+        tvars = tf.trainable_variables()
+        '''
+        if self.hp.lambda_l2>0.0:
+            l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in tvars if v.get_shape().ndims > 1])
+            loss = loss + self.hp.lambda_l2 * l2_loss
+        '''
+
+        # grads = self.compute_gradients(loss, tvars)
+        # grads, _ = tf.clip_by_global_norm(grads, 10.0)
+        # train_op = optimizer.minimize(loss, global_step=global_step)
+
         train_op = optimizer.minimize(loss, global_step=global_step)
 
         return loss, train_op, global_step, accuracy, label_pred
