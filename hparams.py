@@ -24,7 +24,7 @@ class Hparams:
     # training scheme
     parser.add_argument('--batch_size', default=256, type=int)
     parser.add_argument('--eval_batch_size', default=256, type=int)
-    parser.add_argument('--preembedding', default=True, type=bool)
+    parser.add_argument('--preembedding', default=False, type=bool)
 
     #learning rate 0.0003 is too high
     parser.add_argument('--lr', default=0.0003, type=float, help="learning rate")
@@ -34,9 +34,15 @@ class Hparams:
 
     # model
     # This is also the word embedding size , and must can divide by head num.
+    parser.add_argument('--cosine_MP_dim', default=23, type=int,
+                        help="cosine_MP_dim")# tips MP_dim+1 should be abled divide by num_heads
+    parser.add_argument('--with_cosine', default=True, type=bool,
+                        help="with_cosine")
+    parser.add_argument('--with_mp_cosine', default=True, type=bool,
+                        help="with_mp_cosine")
     parser.add_argument('--d_model', default=256, type=int,
                         help="hidden dimension of interativate")
-    parser.add_argument('--d_ff', default=256, type=int,
+    parser.add_argument('--d_ff', default=512, type=int,
                         help="hidden dimension of feedforward layer")
     parser.add_argument('--num_blocks', default=6, type=int,
                         help="number of encoder/decoder blocks")

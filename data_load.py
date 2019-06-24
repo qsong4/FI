@@ -4,6 +4,7 @@ from sklearn.preprocessing import OneHotEncoder
 from tqdm import tqdm
 import numpy as np
 import re
+from keras.preprocessing.sequence import pad_sequences
 
 def loadGloVe(filename):
     embd = np.load(filename)
@@ -14,7 +15,7 @@ def loadGloVe_2(filename, emb_size):
     rarray = np.random.normal(mu, sigma, emb_size)
     embd = {}
     #embd['<pad>'] = [0]*emb_size
-    embd['<pad>'] = list(rarray)
+    #embd['<pad>'] = list(rarray)
     embd['<unk>'] = list(rarray)
     file = open(filename,'r')
     for line in tqdm(file.readlines()):
@@ -91,7 +92,7 @@ def removePunc(inputStr):
     string = re.sub(r"\W+", "", inputStr)
     return string.strip()
 
-def encode(inp, dict):
+def encode(inp, dict, maxlen):
     '''Converts string to number. Used for `generator_fn`.
     inp: 1d byte array.
     type: "x" (source side) or "y" (target side)
@@ -111,11 +112,13 @@ def encode(inp, dict):
         if i == "":
             continue
         x.append(dict.get(i, dict["<unk>"]))
+    x = pad_sequences([x], maxlen=maxlen, dtype='int32',padding='post')
+    #print(x)
     #x = [dict.get(t, dict["<unk>"]) for t in re.split(r"\W+'", inp)]
-    return x
+    return x[0]
 
 
-def generator_fn(sents1, sents2, labels, vocab_fpath):
+def generator_fn(sents1, sents2, labels, maxlen, vocab_fpath):
     '''Generates training / evaluation data
     sents1: list of source sents
     sents2: list of target sents
@@ -138,8 +141,8 @@ def generator_fn(sents1, sents2, labels, vocab_fpath):
     # print(labels)
     #print(labelList)
     for sent1, sent2, label in zip(sents1, sents2, labelList):
-        x = encode(sent1.decode(), token2idx)
-        y = encode(sent2.decode(), token2idx)
+        x = encode(sent1.decode(), token2idx, maxlen)
+        y = encode(sent2.decode(), token2idx, maxlen)
         #x_seqlen, y_seqlen = len(x), len(y)
         yield (x, y, label)
 
@@ -153,7 +156,7 @@ def generator_fn_infer(sents1, sents2, vocab_fpath):
         yield (x, y)
 
 
-def input_fn(sents1, sents2, labels, vocab_fpath, batch_size, shuffle=False):
+def input_fn(sents1, sents2, labels, maxlen, vocab_fpath, batch_size, shuffle=False):
     '''Batchify data
     sents1: list of source sents
     sents2: list of target sents
@@ -182,7 +185,7 @@ def input_fn(sents1, sents2, labels, vocab_fpath, batch_size, shuffle=False):
         generator_fn,
         output_shapes=shapes,
         output_types=types,
-        args=(sents1, sents2, labels, vocab_fpath))  # <- arguments for generator_fn. converted to np string arrays
+        args=(sents1, sents2, labels, maxlen, vocab_fpath))  # <- arguments for generator_fn. converted to np string arrays
 
     if shuffle:  # for training
         dataset = dataset.shuffle(128 * batch_size)
@@ -225,8 +228,9 @@ def get_batch(fpath, maxlen, vocab_fpath, batch_size, shuffle=False):
     num_samples
     '''
     sents1, sents2, labels = load_data(fpath, maxlen)
-    batches = input_fn(sents1, sents2, labels, vocab_fpath, batch_size, shuffle=shuffle)
+    batches = input_fn(sents1, sents2, labels, maxlen, vocab_fpath, batch_size, shuffle=shuffle)
     num_batches = calc_num_batches(len(sents1), batch_size)
+
     return batches, num_batches, len(sents1)
 
 

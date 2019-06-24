@@ -44,7 +44,42 @@ class FI:
         euclidean = tf.sqrt(tf.reduce_sum(tf.square(x1 - tf.matrix_transpose(x2)), axis=1) + 1e-8)
         return 1 / (1 + euclidean)
 
+    def cosine_distance(self, x1, x2, cosine_norm=True, eps=1e-6):
+        cosine_numerator = tf.reduce_sum(tf.multiply(x1, x2), axis=-1)
+        if not cosine_norm:
+            return tf.tanh(cosine_numerator)
+        x1_norm = tf.sqrt(tf.maximum(tf.reduce_sum(tf.square(x1), axis=-1), eps))
+        x2_norm = tf.sqrt(tf.maximum(tf.reduce_sum(tf.square(x2), axis=-1), eps))
+        return cosine_numerator / x1_norm / x2_norm
+
+    def multi_perspective_matching(self, repre1, repre2, scope='mp_match', reuse=tf.AUTO_REUSE):
+        input_shape = tf.shape(repre1)
+        batch_size = input_shape[0]
+        seq_length = input_shape[1]
+        matching_result = []
+
+        with tf.variable_scope(scope, reuse=reuse):
+            if self.hp.with_cosine:
+                cosine_value = self.cosine_distance(repre1, repre2, cosine_norm=False)
+                cosine_value = tf.reshape(cosine_value, [batch_size, seq_length, 1])
+                matching_result.append(cosine_value)
+            if self.hp.with_mp_cosine:
+                mp_cosine_params = tf.get_variable("mp_cosine", shape=[self.hp.cosine_MP_dim, self.hp.d_model], dtype=tf.float32)
+                mp_cosine_params = tf.expand_dims(mp_cosine_params, axis=0)
+                mp_cosine_params = tf.expand_dims(mp_cosine_params, axis=0)
+
+                repre1_flat = tf.expand_dims(repre1, axis=2)
+                repre2_flat = tf.expand_dims(repre2, axis=2)
+                #print(repre1_flat.shape)
+                #print(mp_cosine_params.shape)
+                mp_cosine_matching = self.cosine_distance(tf.multiply(repre1_flat, mp_cosine_params),repre2_flat)
+                matching_result.append(mp_cosine_matching)
+        matching_result = tf.concat(axis=2, values=matching_result)
+        return matching_result
+
     def representation(self, xs, ys, training=True):
+        #x_steps = []
+        #y_steps = []
         with tf.variable_scope("representation", reuse=tf.AUTO_REUSE):
             x = xs
             y = ys
@@ -65,55 +100,48 @@ class FI:
             ency += positional_encoding(ency, self.hp.maxlen)
             ency = tf.layers.dropout(ency, self.hp.dropout_rate, training=training)
 
-            # encx = tf.transpose(encx, [0, 2, 1])
-            # ency = tf.transpose(ency, [0, 2, 1])
-            # encx_expand = tf.expand_dims(encx, -1)
-            # ency_expand = tf.expand_dims(ency, -1)
-            #
-            # ##TODO:add abcnn first layer attention
-            # aW = tf.get_variable(name="aW", shape=(self.hp.maxlen, self.hp.d_model),
-            #                      initializer=tf.contrib.layers.xavier_initializer(),
-            #                      regularizer=tf.contrib.layers.l2_regularizer(scale=0.001))
-            # att_mat = self.make_attention_mat(encx_expand, ency_expand)
-            # #print(att_mat.shape)
-            # encx_a = tf.einsum("ijk,kl->ijl", att_mat, aW)
-            # ency_a = tf.einsum("ijk,kl->ijl", tf.matrix_transpose(att_mat), aW)
-            #
-            # encx = tf.transpose(encx, [0, 2, 1])
-            # ency = tf.transpose(ency, [0, 2, 1])
-            # #print(encx.shape)
-            # #print(encx_a.shape)
-            #
-            # # encx = tf.concat([encx, encx_a], axis=2)
-            # # ency = tf.concat([ency, ency_a], axis=2)
-            # encx += encx_a
-            # ency += ency_a
-
             ## Blocks
             for i in range(self.hp.num_blocks):
-                with tf.variable_scope("num_blocks_{}".format(i), reuse=tf.AUTO_REUSE):
-                    # self-attention
-                    encx = multihead_attention(queries=encx,
-                                               keys=encx,
-                                               values=encx,
-                                               num_heads=self.hp.num_heads,
-                                               dropout_rate=self.hp.dropout_rate,
-                                               training=training,
-                                               causality=False)
-                    # feed forward
-                    encx = ff(encx, num_units=[self.hp.d_ff, self.hp.d_model])
-
-                    ency = multihead_attention(queries=ency,
-                                               keys=ency,
-                                               values=ency,
-                                               num_heads=self.hp.num_heads,
-                                               dropout_rate=self.hp.dropout_rate,
-                                               training=training,
-                                               causality=False)
-
-                    # feed forward
-                    ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
+                if i == 0:
+                    encx = self.base_blocks(encx, encx, scope="num_blocks_{}".format(i))
+                    ency = self.base_blocks(ency, ency, scope="num_blocks_{}".format(i))
+                else:
+                    encx = self.inter_blocks(encx, ency, scope="num_blocks_{}".format(i))
+                    ency = self.inter_blocks(ency, encx, scope="num_blocks_{}".format(i))
         return encx, ency
+
+    #def match_sentences(self, x_steps, t_stepss):
+
+
+    def base_blocks(self, a_repre, b_repre, scope, training=True, reuse=tf.AUTO_REUSE):
+        with tf.variable_scope(scope, reuse=reuse):
+            # self-attention
+            encx = multihead_attention(queries=a_repre,
+                                       keys=b_repre,
+                                       values=b_repre,
+                                       num_heads=self.hp.num_heads,
+                                       dropout_rate=self.hp.dropout_rate,
+                                       training=training,
+                                       causality=False)
+            # feed forward
+            encx = ff(encx, num_units=[self.hp.d_ff, self.hp.d_model])
+        return encx
+
+    def inter_blocks(self, a_repre, b_repre, scope, training=True, reuse=tf.AUTO_REUSE):
+        with tf.variable_scope(scope, reuse=reuse):
+            # self-attention
+            encx = multihead_attention(queries=a_repre,
+                                       keys=b_repre,
+                                       values=b_repre,
+                                       num_heads=self.hp.num_heads,
+                                       dropout_rate=self.hp.dropout_rate,
+                                       training=training,
+                                       causality=False)
+            # feed forward
+            encx = ff(encx, num_units=[self.hp.d_ff, self.hp.d_model])
+
+
+        return encx
 
     def interactivate(self, a_repre, b_repre, training=True):
         with tf.variable_scope("interactivate", reuse=tf.AUTO_REUSE):
@@ -130,7 +158,7 @@ class FI:
                                               causality=False,
                                               scope="vanilla_attention")
                     ### Feed Forward
-                    dec = ff(dec, num_units=[self.hp.d_ff, self.hp.d_model])
+                    dec = ff(dec, num_units=[self.hp.d_ff, self.hp.cosine_MP_dim+1])
         return dec
 
     def fc(self, inpt, match_dim, reuse=tf.AUTO_REUSE):
@@ -155,26 +183,20 @@ class FI:
 
     def build_model(self):
         # representation
-        x_repre, y_repre = self.representation(self.x, self.y)
-        # y_repre = self.representation(self.y)
-        # print(labels.shape)
-        # interactivate
-        x_inter = self.interactivate(x_repre, y_repre)  # (?, ?, 512)
-        y_inter = self.interactivate(y_repre, x_repre)  # (?, ?, 512)
+        x_repre, y_repre = self.representation(self.x, self.y) # (?, ?, d_model)
+
+        # matching
+        match_result = self.multi_perspective_matching(x_repre, y_repre)
+
+        # aggre
+        x_inter = self.interactivate(match_result, match_result)  # (?, ?, 512)
 
         x_avg = tf.reduce_mean(x_inter, axis=1)
-        y_avg = tf.reduce_mean(y_inter, axis=1)
         x_max = tf.reduce_max(x_inter, axis=1)
-        y_max = tf.reduce_max(y_inter, axis=1)
 
-        input2fc = tf.concat([x_avg, x_max, y_avg, y_max], axis=1)
-        # input2fc = tf.concat([x_inter, y_inter], 2)  # (?, ?, 1024)
-        # print(input2fc.shape.as_list())
+        input2fc = tf.concat([x_avg, x_max], axis=1)
         logits = self.fc(input2fc, match_dim=input2fc.shape.as_list()[-1])
-        # print(logits.shape)
 
-        # gold_matrix = tf.one_hot(labels, self.hp.num_class, dtype=tf.float32)
-        # aaa = tf.print(logits, ["LOGITS", logits])
         loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=self.truth))
         with tf.variable_scope('acc', reuse=tf.AUTO_REUSE):
             label_pred = tf.argmax(logits, 1, name='label_pred')
