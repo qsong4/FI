@@ -143,8 +143,8 @@ def generator_fn(sents1, sents2, labels, maxlen, vocab_fpath):
     for sent1, sent2, label in zip(sents1, sents2, labelList):
         x = encode(sent1.decode(), token2idx, maxlen)
         y = encode(sent2.decode(), token2idx, maxlen)
-        #x_seqlen, y_seqlen = len(x), len(y)
-        yield (x, y, label)
+        x_seqlen, y_seqlen = len(x), len(y)
+        yield (x, y, x_seqlen, y_seqlen, label)
 
 
 def generator_fn_infer(sents1, sents2, vocab_fpath):
@@ -177,9 +177,9 @@ def input_fn(sents1, sents2, labels, maxlen, vocab_fpath, batch_size, shuffle=Fa
 
     '''
     # ((x, x_seqlen), (y, y_seqlen), (label))
-    shapes = ([None], [None], [None])
-    types = (tf.int32, tf.int32, tf.int32)
-    paddings = (0, 0, 0)
+    shapes = ([None], [None], (), (), [None])
+    types = (tf.int32, tf.int32, tf.int32, tf.int32, tf.int32)
+    paddings = (0, 0, 0, 0, 0)
 
     dataset = tf.data.Dataset.from_generator(
         generator_fn,

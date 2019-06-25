@@ -21,12 +21,16 @@ class FI:
         self.embeddings = get_token_embeddings(self.embd, self.hp.vocab_size, self.hp.d_model, zero_pad=False)
         self.x = tf.placeholder(tf.int32, [None, None], name="text_x")
         self.y = tf.placeholder(tf.int32, [None, None], name="text_y")
+        self.x_len = tf.placeholder(tf.int32, [None])
+        self.y_len = tf.placeholder(tf.int32, [None])
         self.truth = tf.placeholder(tf.int32, [None, self.hp.num_class], name="truth")
 
-    def create_feed_dict(self, x, y, truth):
+    def create_feed_dict(self, x, y, x_len, y_len, truth):
         feed_dict = {
             self.x: x,
             self.y: y,
+            self.x_len: x_len,
+            self.y_len: y_len,
             self.truth: truth,
         }
 
@@ -106,8 +110,8 @@ class FI:
                     encx = self.base_blocks(encx, encx, scope="num_blocks_{}".format(i))
                     ency = self.base_blocks(ency, ency, scope="num_blocks_{}".format(i))
                 else:
-                    encx = self.inter_blocks(encx, ency, scope="num_blocks_{}".format(i))
-                    ency = self.inter_blocks(ency, encx, scope="num_blocks_{}".format(i))
+                    encx, ency = self.inter_blocks(encx, ency, scope="num_blocks_{}".format(i))
+                    #ency = self.inter_blocks(ency, encx, scope="num_blocks_{}".format(i))
         return encx, ency
 
     #def match_sentences(self, x_steps, t_stepss):
@@ -130,9 +134,9 @@ class FI:
     def inter_blocks(self, a_repre, b_repre, scope, training=True, reuse=tf.AUTO_REUSE):
         with tf.variable_scope(scope, reuse=reuse):
             # self-attention
-            encx = multihead_attention(queries=a_repre,
-                                       keys=b_repre,
-                                       values=b_repre,
+            encx = multihead_attention(queries=b_repre,
+                                       keys=a_repre,
+                                       values=a_repre,
                                        num_heads=self.hp.num_heads,
                                        dropout_rate=self.hp.dropout_rate,
                                        training=training,
@@ -140,8 +144,19 @@ class FI:
             # feed forward
             encx = ff(encx, num_units=[self.hp.d_ff, self.hp.d_model])
 
+            # self-attention
+            ency = multihead_attention(queries=a_repre,
+                                       keys=b_repre,
+                                       values=b_repre,
+                                       num_heads=self.hp.num_heads,
+                                       dropout_rate=self.hp.dropout_rate,
+                                       training=training,
+                                       causality=False)
+            # feed forward
+            ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
 
-        return encx
+
+        return encx, ency
 
     def interactivate(self, a_repre, b_repre, training=True):
         with tf.variable_scope("interactivate", reuse=tf.AUTO_REUSE):
@@ -183,8 +198,12 @@ class FI:
 
     def build_model(self):
         # representation
-        x_repre, y_repre = self.representation(self.x, self.y) # (?, ?, d_model)
+        x_repre, y_repre = self.representation(self.x, self.y) # (batchsize, maxlen, d_model)
+        x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
+        y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
 
+        x_repre = tf.multiply(x_repre, tf.expand_dims(x_mask, axis=-1))
+        y_repre = tf.multiply(y_repre, tf.expand_dims(y_mask, axis=-1))
         # matching
         match_result = self.multi_perspective_matching(x_repre, y_repre)
 

@@ -11,8 +11,8 @@ import math
 def evaluate(sess, eval_init_op, num_eval_batches):
 
     sess.run(eval_init_op)
-    x, y, labels = sess.run(data_element)
-    feed_dict = m.create_feed_dict(x, y, labels)
+    x, y, x_len, y_len, labels = sess.run(data_element)
+    feed_dict = m.create_feed_dict(x, y, x_len, y_len, labels)
     total_steps = 1 * num_eval_batches
     total_acc = 0.0
     total_loss = 0.0
@@ -68,8 +68,8 @@ with tf.Session() as sess:
     total_acc = 0.0
     total_batch = 0
     for i in tqdm(range(_gs, total_steps+1)):
-        x, y, labels = sess.run(data_element)
-        feed_dict = m.create_feed_dict(x, y, labels)
+        x, y, x_len, y_len, labels = sess.run(data_element)
+        feed_dict = m.create_feed_dict(x, y, x_len, y_len, labels)
         _, _loss, _accuracy, _gs = sess.run([train_op, loss_op, accuracy_op, global_step], feed_dict=feed_dict)
         total_loss += _loss
         total_acc += _accuracy
