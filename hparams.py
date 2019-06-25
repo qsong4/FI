@@ -34,7 +34,7 @@ class Hparams:
 
     # model
     # This is also the word embedding size , and must can divide by head num.
-    parser.add_argument('--cosine_MP_dim', default=23, type=int,
+    parser.add_argument('--cosine_MP_dim', default=29, type=int,
                         help="cosine_MP_dim")# tips MP_dim+1 should be abled divide by num_heads
     parser.add_argument('--with_cosine', default=True, type=bool,
                         help="with_cosine")

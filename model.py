@@ -56,6 +56,34 @@ class FI:
         x2_norm = tf.sqrt(tf.maximum(tf.reduce_sum(tf.square(x2), axis=-1), eps))
         return cosine_numerator / x1_norm / x2_norm
 
+    def cal_relevancy_matrix(self, x, y):
+        x_temp = tf.expand_dims(x, 1)
+        y_temp = tf.expand_dims(y, 2)
+        relevancy_matrix = self.cosine_distance(x_temp, y_temp, cosine_norm=True)
+        return relevancy_matrix
+
+    def mask_relevancy_matrix(self, relevancy_matrix, x_mask, y_mask):
+        relevancy_matrix = tf.multiply(relevancy_matrix, tf.expand_dims(x_mask, axis=1))
+        relevancy_matrix = tf.multiply(relevancy_matrix, tf.expand_dims(y_mask, axis=2))
+        return relevancy_matrix
+
+    def match_passage_with_question(self, x1, x2, x1_mask, x2_mask, scope="match_x_with_y"):
+        x_repre = tf.multiply(x1, tf.expand_dims(x1_mask, axis=-1))
+        y_repre = tf.multiply(x2, tf.expand_dims(x2_mask, axis=-1))
+        all_x_aware_y_representation = []
+        with tf.variable_scope(scope or "match_x_with_y"):
+            relevancy_matrix = self.cal_relevancy_matrix(x_repre, y_repre)
+            relevancy_matrix = self.mask_relevancy_matrix(relevancy_matrix, x1_mask, x2_mask)
+            all_x_aware_y_representation.append(tf.reduce_max(relevancy_matrix, axis=2, keepdims=True))
+            all_x_aware_y_representation.append(tf.reduce_mean(relevancy_matrix, axis=2, keepdims=True))
+
+            attentive_rep = self.multi_perspective_matching(x_repre, y_repre)
+            all_x_aware_y_representation.append(attentive_rep)
+
+        all_x_aware_y_representation = tf.concat(axis=2, values=all_x_aware_y_representation)
+
+        return all_x_aware_y_representation
+
     def multi_perspective_matching(self, repre1, repre2, scope='mp_match', reuse=tf.AUTO_REUSE):
         input_shape = tf.shape(repre1)
         batch_size = input_shape[0]
@@ -173,7 +201,7 @@ class FI:
                                               causality=False,
                                               scope="vanilla_attention")
                     ### Feed Forward
-                    dec = ff(dec, num_units=[self.hp.d_ff, self.hp.cosine_MP_dim+1])
+                    dec = ff(dec, num_units=[self.hp.d_ff, self.hp.cosine_MP_dim+3])
         return dec
 
     def fc(self, inpt, match_dim, reuse=tf.AUTO_REUSE):
@@ -202,10 +230,9 @@ class FI:
         x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
         y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
 
-        x_repre = tf.multiply(x_repre, tf.expand_dims(x_mask, axis=-1))
-        y_repre = tf.multiply(y_repre, tf.expand_dims(y_mask, axis=-1))
+
         # matching
-        match_result = self.multi_perspective_matching(x_repre, y_repre)
+        match_result = self.match_passage_with_question(x_repre, y_repre, x_mask, y_mask)
 
         # aggre
         x_inter = self.interactivate(match_result, match_result)  # (?, ?, 512)
