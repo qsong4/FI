@@ -270,6 +270,35 @@ class FI:
 
         return loss, train_op, global_step, accuracy, label_pred
 
+    def eval_model(self):
+        # representation
+        x_repre, y_repre = self.representation(self.x, self.y) # (batchsize, maxlen, d_model)
+        x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
+        y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
+
+
+        # matching
+        match_result = self.match_passage_with_question(x_repre, y_repre, x_mask, y_mask)
+
+        # aggre
+        x_inter = self.interactivate(match_result, match_result)  # (?, ?, 512)
+
+        x_avg = tf.reduce_mean(x_inter, axis=1)
+        x_max = tf.reduce_max(x_inter, axis=1)
+
+        input2fc = tf.concat([x_avg, x_max], axis=1)
+        logits = self.fc(input2fc, match_dim=input2fc.shape.as_list()[-1])
+
+        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=self.truth))
+        with tf.variable_scope('acc', reuse=tf.AUTO_REUSE):
+            label_pred = tf.argmax(logits, 1, name='label_pred')
+            label_true = tf.argmax(self.truth, 1, name='label_true')
+            correct_pred = tf.equal(tf.cast(label_pred, tf.int32), tf.cast(label_true, tf.int32))
+            accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32), name='Accuracy')
+
+
+        return loss,  accuracy
+
     def predict_model(self):
 
         # representation
@@ -295,3 +324,8 @@ class FI:
             label_pred = tf.argmax(logits, 1, name='label_pred')
 
         return label_pred
+
+
+
+
+
