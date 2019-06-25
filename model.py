@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 from data_load import load_vocab, loadGloVe
-from modules import get_token_embeddings, ff, positional_encoding, multihead_attention, label_smoothing, noam_scheme
+from modules import get_token_embeddings, ff, positional_encoding, multihead_attention, ln, noam_scheme
 
 
 class FI:
@@ -131,6 +131,10 @@ class FI:
 
             ency += positional_encoding(ency, self.hp.maxlen)
             ency = tf.layers.dropout(ency, self.hp.dropout_rate, training=training)
+
+            #add ln
+            encx = ln(encx)
+            ency = ln(ency)
 
             ## Blocks
             for i in range(self.hp.num_blocks):

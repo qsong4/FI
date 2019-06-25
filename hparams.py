@@ -18,7 +18,7 @@ class Hparams:
     parser.add_argument('--vec_path', default='./data/vec/glove.840B.300d.txt')
 
     ## vocabulary
-    parser.add_argument('--vocab', default='./data/esb.vocab',
+    parser.add_argument('--vocab', default='./data/snli.vocab',
                         help="vocabulary file path")
 
     # training scheme
