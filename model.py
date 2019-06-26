@@ -36,10 +36,12 @@ class FI:
 
         return feed_dict
 
-    def create_feed_dict_infer(self, x, y):
+    def create_feed_dict_infer(self, x, y, x_len, y_len):
         feed_dict = {
             self.x: x,
-            self.y: y
+            self.y: y,
+            self.x_len: x_len,
+            self.y_len: y_len,
         }
 
         return feed_dict
@@ -305,25 +307,23 @@ class FI:
         return loss,  accuracy
 
     def predict_model(self):
-
         # representation
-        x_repre, y_repre = self.representation(self.x, self.y, False)
-        # y_repre = self.representation(self.y, False)
+        x_repre, y_repre = self.representation(self.x, self.y) # (batchsize, maxlen, d_model)
+        x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
+        y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
 
-        # interactivate
-        x_inter = self.interactivate(x_repre, y_repre, False)  # (?, ?, 512)
-        y_inter = self.interactivate(y_repre, x_repre, False)  # (?, ?, 512)
-        # print(y_inter.shape)
-        # print(x_inter.shape)
+
+        # matching
+        match_result = self.match_passage_with_question(x_repre, y_repre, x_mask, y_mask)
+
+        # aggre
+        x_inter = self.aggregation(match_result, match_result)  # (?, ?, 512)
 
         x_avg = tf.reduce_mean(x_inter, axis=1)
-        y_avg = tf.reduce_mean(y_inter, axis=1)
         x_max = tf.reduce_max(x_inter, axis=1)
-        y_max = tf.reduce_max(y_inter, axis=1)
 
-        input2fc = tf.concat([x_avg, x_max, y_avg, y_max], axis=1)
-
-        logits = self.fc(input2fc, match_dim=input2fc.shape.as_list()[-1], reuse=tf.AUTO_REUSE)
+        input2fc = tf.concat([x_avg, x_max], axis=1)
+        logits = self.fc(input2fc, match_dim=input2fc.shape.as_list()[-1])
 
         with tf.variable_scope('acc', reuse=tf.AUTO_REUSE):
             label_pred = tf.argmax(logits, 1, name='label_pred')

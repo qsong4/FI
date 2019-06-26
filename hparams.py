@@ -60,3 +60,4 @@ class Hparams:
     parser.add_argument('--dropout_rate', default=0.3, type=float)
 
     # test
+    parser.add_argument('--test_file', default='./data/snli_test.tsv')

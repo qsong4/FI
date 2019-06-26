@@ -147,13 +147,13 @@ def generator_fn(sents1, sents2, labels, maxlen, vocab_fpath):
         yield (x, y, x_seqlen, y_seqlen, label)
 
 
-def generator_fn_infer(sents1, sents2, vocab_fpath):
+def generator_fn_infer(sents1, sents2, maxlen, vocab_fpath):
     token2idx, _, _ = load_vocab(vocab_fpath)
     for sent1, sent2 in zip(sents1, sents2):
-        x = encode(sent1.decode(), token2idx)
-        y = encode(sent2.decode(), token2idx)
+        x = encode(sent1.decode(), token2idx, maxlen)
+        y = encode(sent2.decode(), token2idx, maxlen)
         x_seqlen, y_seqlen = len(x), len(y)
-        yield (x, y)
+        yield (x, y, x_seqlen, y_seqlen)
 
 
 def input_fn(sents1, sents2, labels, maxlen, vocab_fpath, batch_size, shuffle=False):
@@ -196,17 +196,17 @@ def input_fn(sents1, sents2, labels, maxlen, vocab_fpath, batch_size, shuffle=Fa
     return dataset
 
 
-def input_fn_infer(sents1, sents2, vocab_fpath, batch_size):
+def input_fn_infer(sents1, sents2, maxlen, vocab_fpath, batch_size):
     # ((x, x_seqlen), (y, y_seqlen))
-    shapes = ([None], [None])
-    types = (tf.int32, tf.int32)
-    paddings = (0, 0)
+    shapes = ([None], [None], (), ())
+    types = (tf.int32, tf.int32, tf.int32, tf.int32)
+    paddings = (0, 0, 0, 0)
 
     dataset = tf.data.Dataset.from_generator(
         generator_fn_infer,
         output_shapes=shapes,
         output_types=types,
-        args=(sents1, sents2, vocab_fpath))  # <- arguments for generator_fn. converted to np string arrays
+        args=(sents1, sents2, maxlen, vocab_fpath))  # <- arguments for generator_fn. converted to np string arrays
 
     #dataset = dataset.repeat()  # iterate forever
     dataset = dataset.padded_batch(batch_size, shapes, paddings).prefetch(1)
@@ -234,8 +234,8 @@ def get_batch(fpath, maxlen, vocab_fpath, batch_size, shuffle=False):
     return batches, num_batches, len(sents1)
 
 
-def get_batch_infer(sents1, sents2, vocab_fpath, batch_size):
-    batches = input_fn_infer(sents1, sents2, vocab_fpath, batch_size)
+def get_batch_infer(sents1, sents2, maxlen, vocab_fpath, batch_size):
+    batches = input_fn_infer(sents1, sents2, maxlen, vocab_fpath, batch_size)
     return batches
 
 if __name__ == '__main__':
