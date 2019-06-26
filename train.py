@@ -64,10 +64,11 @@ with tf.Session() as sess:
     sess.run(train_init_op)
     total_steps = hp.num_epochs * num_train_batches
     _gs = sess.run(global_step)
-    best_acc = 0
+    best_acc = 0.0
     total_loss = 0.0
     total_acc = 0.0
     total_batch = 0
+    tolerant = 0
     for i in tqdm(range(_gs, total_steps+1)):
         x, y, x_len, y_len, labels = sess.run(data_element)
         feed_dict = m.create_feed_dict(x, y, x_len, y_len, labels)
@@ -89,12 +90,20 @@ with tf.Session() as sess:
             print("\n")
             print("# evaluation results")
             print("验证集: loss {:.4f}, acc {:.3f} \n".format(dev_loss, dev_acc))
+            if dev_acc > best_acc:
+                best_acc = dev_acc
+                # save model each epoch
+                print("#########New Best Result###########")
+                model_output = hp.model_path % (epoch, dev_loss, dev_acc)
+                ckpt_name = os.path.join(hp.modeldir, model_output)
+                saver.save(sess, ckpt_name, global_step=_gs)
+                print("training of {} epochs, {} has been saved.".format(epoch, ckpt_name))
+            else:
+                tolerant += 1
 
-            #save model each epoch
-            model_output = hp.model_path % (epoch, dev_loss, dev_acc)
-            ckpt_name = os.path.join(hp.modeldir, model_output)
-            saver.save(sess, ckpt_name, global_step=_gs)
-            print("training of {} epochs, {} has been saved.".format(epoch, ckpt_name))
+            if tolerant == hp.early_stop:
+                print("early stop at {} epochs, acc three epochs has not been improved.".format(epoch))
+                break
 
             """
             #save model when get best acc at dev set

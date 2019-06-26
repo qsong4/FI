@@ -137,8 +137,8 @@ class FI:
             ency = ln(ency)
 
             ## Blocks
-            for i in range(self.hp.num_blocks):
-                if i == 0:
+            for i in range(self.hp.num_extract_blocks + self.hp.num_inter_blocks):
+                if i < self.hp.num_extract_blocks:
                     encx = self.base_blocks(encx, encx, scope="num_blocks_{}".format(i))
                     ency = self.base_blocks(ency, ency, scope="num_blocks_{}".format(i))
                 else:
@@ -190,10 +190,10 @@ class FI:
 
         return encx, ency
 
-    def interactivate(self, a_repre, b_repre, training=True):
-        with tf.variable_scope("interactivate", reuse=tf.AUTO_REUSE):
+    def aggregation(self, a_repre, b_repre, training=True):
+        with tf.variable_scope("aggregation", reuse=tf.AUTO_REUSE):
             # Blocks
-            for i in range(self.hp.num_blocks):
+            for i in range(self.hp.num_agg_blocks):
                 with tf.variable_scope("num_blocks_{}".format(i), reuse=tf.AUTO_REUSE):
                     # Vanilla attention
                     dec = multihead_attention(queries=b_repre,
@@ -239,7 +239,7 @@ class FI:
         match_result = self.match_passage_with_question(x_repre, y_repre, x_mask, y_mask)
 
         # aggre
-        x_inter = self.interactivate(match_result, match_result)  # (?, ?, 512)
+        x_inter = self.aggregation(match_result, match_result)  # (?, ?, 512)
 
         x_avg = tf.reduce_mean(x_inter, axis=1)
         x_max = tf.reduce_max(x_inter, axis=1)
@@ -258,6 +258,7 @@ class FI:
         global_step = tf.train.get_or_create_global_step()
         lr = noam_scheme(self.hp.lr, global_step, self.hp.warmup_steps)
         optimizer = tf.train.AdamOptimizer(lr)
+        #optimizer = tf.train.AdadeltaOptimizer(lr)
 
         tvars = tf.trainable_variables()
         '''
@@ -285,7 +286,7 @@ class FI:
         match_result = self.match_passage_with_question(x_repre, y_repre, x_mask, y_mask)
 
         # aggre
-        x_inter = self.interactivate(match_result, match_result)  # (?, ?, 512)
+        x_inter = self.aggregation(match_result, match_result)  # (?, ?, 512)
 
         x_avg = tf.reduce_mean(x_inter, axis=1)
         x_max = tf.reduce_max(x_inter, axis=1)

@@ -25,6 +25,7 @@ class Hparams:
     parser.add_argument('--batch_size', default=256, type=int)
     parser.add_argument('--eval_batch_size', default=256, type=int)
     parser.add_argument('--preembedding', default=False, type=bool)
+    parser.add_argument('--early_stop', default=3, type=int)
 
     #learning rate 0.0003 is too high
     parser.add_argument('--lr', default=0.0003, type=float, help="learning rate")
@@ -44,8 +45,12 @@ class Hparams:
                         help="hidden dimension of interativate")
     parser.add_argument('--d_ff', default=512, type=int,
                         help="hidden dimension of feedforward layer")
-    parser.add_argument('--num_blocks', default=6, type=int,
-                        help="number of encoder/decoder blocks")
+    parser.add_argument('--num_extract_blocks', default=3, type=int,
+                        help="number of extract blocks")
+    parser.add_argument('--num_inter_blocks', default=3, type=int,
+                        help="number of inter blocks")
+    parser.add_argument('--num_agg_blocks', default=3, type=int,
+                        help="number of agg blocks")
     parser.add_argument('--num_heads', default=8, type=int,
                         help="number of attention heads")
     parser.add_argument('--maxlen', default=50, type=int,
