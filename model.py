@@ -141,10 +141,10 @@ class FI:
             ## Blocks
             for i in range(self.hp.num_extract_blocks + self.hp.num_inter_blocks):
                 if i < self.hp.num_extract_blocks:
-                    encx = self.base_blocks(encx, encx, scope="num_blocks_{}".format(i))
-                    ency = self.base_blocks(ency, ency, scope="num_blocks_{}".format(i))
+                    encx = self.base_blocks(encx, encx, training=training, scope="num_blocks_{}".format(i))
+                    ency = self.base_blocks(ency, ency, training=training, scope="num_blocks_{}".format(i))
                 else:
-                    encx, ency = self.inter_blocks(encx, ency, scope="num_blocks_{}".format(i))
+                    encx, ency = self.inter_blocks(encx, ency, training=training, scope="num_blocks_{}".format(i))
                     #ency = self.inter_blocks(ency, encx, scope="num_blocks_{}".format(i))
         return encx, ency
 
@@ -277,9 +277,9 @@ class FI:
 
         return loss, train_op, global_step, accuracy, label_pred
 
-    def eval_model(self):
+    def eval_model(self, is_training=True):
         # representation
-        x_repre, y_repre = self.representation(self.x, self.y) # (batchsize, maxlen, d_model)
+        x_repre, y_repre = self.representation(self.x, self.y, is_training) # (batchsize, maxlen, d_model)
         x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
         y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
 
@@ -288,7 +288,7 @@ class FI:
         match_result = self.match_passage_with_question(x_repre, y_repre, x_mask, y_mask)
 
         # aggre
-        x_inter = self.aggregation(match_result, match_result)  # (?, ?, 512)
+        x_inter = self.aggregation(match_result, match_result, is_training)  # (?, ?, 512)
 
         x_avg = tf.reduce_mean(x_inter, axis=1)
         x_max = tf.reduce_max(x_inter, axis=1)
@@ -308,7 +308,7 @@ class FI:
 
     def predict_model(self):
         # representation
-        x_repre, y_repre = self.representation(self.x, self.y) # (batchsize, maxlen, d_model)
+        x_repre, y_repre = self.representation(self.x, self.y, False) # (batchsize, maxlen, d_model)
         x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
         y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
 
@@ -317,7 +317,7 @@ class FI:
         match_result = self.match_passage_with_question(x_repre, y_repre, x_mask, y_mask)
 
         # aggre
-        x_inter = self.aggregation(match_result, match_result)  # (?, ?, 512)
+        x_inter = self.aggregation(match_result, match_result, False)  # (?, ?, 512)
 
         x_avg = tf.reduce_mean(x_inter, axis=1)
         x_max = tf.reduce_max(x_inter, axis=1)
