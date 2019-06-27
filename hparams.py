@@ -33,6 +33,13 @@ class Hparams:
     parser.add_argument('--num_epochs', default=20, type=int)
     parser.add_argument('--lambda_l2', default=0.004, type=float)
 
+    # match
+    parser.add_argument('--with_maxpool_match', default=True, type=bool)
+    parser.add_argument('--with_full_match', default=True, type=bool)
+    parser.add_argument('--with_attentive_match', default=True, type=bool)
+    parser.add_argument('--with_max_attentive_match', default=True, type=bool)
+    parser.add_argument('--att_dim', default=50, type=int)
+    parser.add_argument('--att_type', default="symmetric")
     # model
     # This is also the word embedding size , and must can divide by head num.
     parser.add_argument('--cosine_MP_dim', default=29, type=int,
@@ -41,7 +48,7 @@ class Hparams:
                         help="with_cosine")
     parser.add_argument('--with_mp_cosine', default=True, type=bool,
                         help="with_mp_cosine")
-    parser.add_argument('--d_model', default=256, type=int,
+    parser.add_argument('--d_model', default=300, type=int,
                         help="hidden dimension of interativate")
     parser.add_argument('--d_ff', default=512, type=int,
                         help="hidden dimension of feedforward layer")
@@ -51,7 +58,7 @@ class Hparams:
                         help="number of inter blocks")
     parser.add_argument('--num_agg_blocks', default=3, type=int,
                         help="number of agg blocks")
-    parser.add_argument('--num_heads', default=8, type=int,
+    parser.add_argument('--num_heads', default=6, type=int,
                         help="number of attention heads")
     parser.add_argument('--maxlen', default=50, type=int,
                         help="maximum length of a source sequence")

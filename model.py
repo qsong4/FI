@@ -2,7 +2,7 @@ import tensorflow as tf
 
 from data_load import load_vocab, loadGloVe
 from modules import get_token_embeddings, ff, positional_encoding, multihead_attention, ln, noam_scheme
-
+from matching import match_passage_with_question
 
 class FI:
     """
@@ -46,70 +46,6 @@ class FI:
 
         return feed_dict
 
-    def make_attention_mat(self, x1, x2):
-        euclidean = tf.sqrt(tf.reduce_sum(tf.square(x1 - tf.matrix_transpose(x2)), axis=1) + 1e-8)
-        return 1 / (1 + euclidean)
-
-    def cosine_distance(self, x1, x2, cosine_norm=True, eps=1e-6):
-        cosine_numerator = tf.reduce_sum(tf.multiply(x1, x2), axis=-1)
-        if not cosine_norm:
-            return tf.tanh(cosine_numerator)
-        x1_norm = tf.sqrt(tf.maximum(tf.reduce_sum(tf.square(x1), axis=-1), eps))
-        x2_norm = tf.sqrt(tf.maximum(tf.reduce_sum(tf.square(x2), axis=-1), eps))
-        return cosine_numerator / x1_norm / x2_norm
-
-    def cal_relevancy_matrix(self, x, y):
-        x_temp = tf.expand_dims(x, 1)
-        y_temp = tf.expand_dims(y, 2)
-        relevancy_matrix = self.cosine_distance(x_temp, y_temp, cosine_norm=True)
-        return relevancy_matrix
-
-    def mask_relevancy_matrix(self, relevancy_matrix, x_mask, y_mask):
-        relevancy_matrix = tf.multiply(relevancy_matrix, tf.expand_dims(x_mask, axis=1))
-        relevancy_matrix = tf.multiply(relevancy_matrix, tf.expand_dims(y_mask, axis=2))
-        return relevancy_matrix
-
-    def match_passage_with_question(self, x1, x2, x1_mask, x2_mask, scope="match_x_with_y"):
-        x_repre = tf.multiply(x1, tf.expand_dims(x1_mask, axis=-1))
-        y_repre = tf.multiply(x2, tf.expand_dims(x2_mask, axis=-1))
-        all_x_aware_y_representation = []
-        with tf.variable_scope(scope or "match_x_with_y"):
-            relevancy_matrix = self.cal_relevancy_matrix(x_repre, y_repre)
-            relevancy_matrix = self.mask_relevancy_matrix(relevancy_matrix, x1_mask, x2_mask)
-            all_x_aware_y_representation.append(tf.reduce_max(relevancy_matrix, axis=2, keepdims=True))
-            all_x_aware_y_representation.append(tf.reduce_mean(relevancy_matrix, axis=2, keepdims=True))
-
-            attentive_rep = self.multi_perspective_matching(x_repre, y_repre)
-            all_x_aware_y_representation.append(attentive_rep)
-
-        all_x_aware_y_representation = tf.concat(axis=2, values=all_x_aware_y_representation)
-
-        return all_x_aware_y_representation
-
-    def multi_perspective_matching(self, repre1, repre2, scope='mp_match', reuse=tf.AUTO_REUSE):
-        input_shape = tf.shape(repre1)
-        batch_size = input_shape[0]
-        seq_length = input_shape[1]
-        matching_result = []
-
-        with tf.variable_scope(scope, reuse=reuse):
-            if self.hp.with_cosine:
-                cosine_value = self.cosine_distance(repre1, repre2, cosine_norm=False)
-                cosine_value = tf.reshape(cosine_value, [batch_size, seq_length, 1])
-                matching_result.append(cosine_value)
-            if self.hp.with_mp_cosine:
-                mp_cosine_params = tf.get_variable("mp_cosine", shape=[self.hp.cosine_MP_dim, self.hp.d_model], dtype=tf.float32)
-                mp_cosine_params = tf.expand_dims(mp_cosine_params, axis=0)
-                mp_cosine_params = tf.expand_dims(mp_cosine_params, axis=0)
-
-                repre1_flat = tf.expand_dims(repre1, axis=2)
-                repre2_flat = tf.expand_dims(repre2, axis=2)
-                #print(repre1_flat.shape)
-                #print(mp_cosine_params.shape)
-                mp_cosine_matching = self.cosine_distance(tf.multiply(repre1_flat, mp_cosine_params),repre2_flat)
-                matching_result.append(mp_cosine_matching)
-        matching_result = tf.concat(axis=2, values=matching_result)
-        return matching_result
 
     def representation(self, xs, ys, training=True):
         #x_steps = []
@@ -193,6 +129,7 @@ class FI:
         return encx, ency
 
     def aggregation(self, a_repre, b_repre, training=True):
+        dim = a_repre.shape.as_list()[-1]
         with tf.variable_scope("aggregation", reuse=tf.AUTO_REUSE):
             # Blocks
             for i in range(self.hp.num_agg_blocks):
@@ -207,7 +144,7 @@ class FI:
                                               causality=False,
                                               scope="vanilla_attention")
                     ### Feed Forward
-                    dec = ff(dec, num_units=[self.hp.d_ff, self.hp.cosine_MP_dim+3])
+                    dec = ff(dec, num_units=[self.hp.d_ff, dim])
         return dec
 
     def fc(self, inpt, match_dim, reuse=tf.AUTO_REUSE):
@@ -238,8 +175,7 @@ class FI:
 
 
         # matching
-        match_result = self.match_passage_with_question(x_repre, y_repre, x_mask, y_mask)
-
+        match_result = match_passage_with_question(x_repre, y_repre, x_mask, y_mask)
         # aggre
         x_inter = self.aggregation(match_result, match_result)  # (?, ?, 512)
 
@@ -285,7 +221,7 @@ class FI:
 
 
         # matching
-        match_result = self.match_passage_with_question(x_repre, y_repre, x_mask, y_mask)
+        match_result = match_passage_with_question(x_repre, y_repre, x_mask, y_mask)
 
         # aggre
         x_inter = self.aggregation(match_result, match_result, is_training)  # (?, ?, 512)
