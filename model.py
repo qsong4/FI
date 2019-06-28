@@ -75,13 +75,19 @@ class FI:
             ency = ln(ency)
 
             ## Blocks
+            #x_list = []
+            #y_list = []
             for i in range(self.hp.num_extract_blocks + self.hp.num_inter_blocks):
                 if i < self.hp.num_extract_blocks:
                     encx = self.base_blocks(encx, encx, training=training, scope="num_blocks_{}".format(i))
                     ency = self.base_blocks(ency, ency, training=training, scope="num_blocks_{}".format(i))
+                    #x_list.append(encx)
+                    #y_list.append(ency)
                 else:
                     encx, ency = self.inter_blocks(encx, ency, training=training, scope="num_blocks_{}".format(i))
-                    #ency = self.inter_blocks(ency, encx, scope="num_blocks_{}".format(i))
+                    #x_list.append(encx)
+                    #y_list.append(ency)
+        #return x_list, y_list
         return encx, ency
 
     #def match_sentences(self, x_steps, t_stepss):
@@ -169,13 +175,17 @@ class FI:
 
     def build_model(self):
         # representation
+        # TODO: Use all layer output not only the last one
         x_repre, y_repre = self.representation(self.x, self.y) # (batchsize, maxlen, d_model)
+        #x_repre_list, y_repre_list = self.representation(self.x, self.y) #(layers, batchsize, maxlen, d_model)
         x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
         y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
 
 
         # matching
-        match_result = match_passage_with_question(x_repre, y_repre, x_mask, y_mask)
+        # TODO: matching differnt layer result
+
+        match_result = match_passage_with_question(x_repre, y_repre, x_mask, y_mask)#(batchsize, maxlen, mp_dim)
         # aggre
         x_inter = self.aggregation(match_result, match_result)  # (?, ?, 512)
 

@@ -66,7 +66,9 @@ def make_attention_mat(x1, x2):
 
 
 def cosine_distance(x1, x2, cosine_norm=True, eps=1e-6):
-    cosine_numerator = tf.reduce_sum(tf.multiply(x1, x2), axis=-1)
+    #x1 (?, 50, mp_dim, 300)
+    #x2 (?, 50, 1, 300)
+    cosine_numerator = tf.reduce_sum(tf.multiply(x1, x2), axis=-1)#(?, 50, mp_dim)
     if not cosine_norm:
         return tf.tanh(cosine_numerator)
     x1_norm = tf.sqrt(tf.maximum(tf.reduce_sum(tf.square(x1), axis=-1), eps))
@@ -75,8 +77,8 @@ def cosine_distance(x1, x2, cosine_norm=True, eps=1e-6):
 
 
 def cal_relevancy_matrix(x, y):
-    x_temp = tf.expand_dims(x, 1)
-    y_temp = tf.expand_dims(y, 2)
+    x_temp = tf.expand_dims(x, 1) #(?, 1, 50, 300)
+    y_temp = tf.expand_dims(y, 2) #(?, 50, 1, 300)
     relevancy_matrix = cosine_distance(x_temp, y_temp, cosine_norm=True)
     return relevancy_matrix
 
@@ -143,20 +145,22 @@ def match_passage_with_question(x1, x2, x1_mask, x2_mask, scope="match_x_with_y"
     all_x_aware_y_representation = []
 
     with tf.variable_scope(scope or "match_x_with_y", reuse=tf.AUTO_REUSE):
-        relevancy_matrix = cal_relevancy_matrix(x_repre, y_repre)
+        relevancy_matrix = cal_relevancy_matrix(x_repre, y_repre) #(?, 50, 50)
         relevancy_matrix = mask_relevancy_matrix(relevancy_matrix, x1_mask, x2_mask)
         all_x_aware_y_representation.append(tf.reduce_max(relevancy_matrix, axis=2, keepdims=True))
         all_x_aware_y_representation.append(tf.reduce_mean(relevancy_matrix, axis=2, keepdims=True))
+        '''
         if hp.with_maxpool_match:
             maxpooling_decomp_params = tf.get_variable("maxpooling_decomp_params",
                                                        shape=[hp.cosine_MP_dim, hp.d_model], dtype=tf.float32)
             maxpooling_rep = cal_maxpooling_matching(x_repre, y_repre, maxpooling_decomp_params)
             all_x_aware_y_representation.append(maxpooling_rep)
-
+        '''
         if hp.with_full_match:
             attentive_rep = multi_perspective_match(x_repre, y_repre, scope='mp_full_match')
             all_x_aware_y_representation.append(attentive_rep)
 
+        '''
         if hp.with_attentive_match:
             atten_scores = calcuate_attention(x_repre, y_repre, hp.d_model, hp.d_model,
                     scope_name="attention", att_type=hp.att_type, att_dim=hp.att_dim,
@@ -173,7 +177,7 @@ def match_passage_with_question(x1, x2, x1_mask, x2_mask, scope="match_x_with_y"
             max_attentive_rep = multi_perspective_match(x_repre, max_att,
                                                                      scope='mp_max_att')
             all_x_aware_y_representation.append(max_attentive_rep)
-
+        '''
 
     all_x_aware_y_representation = tf.concat(axis=2, values=all_x_aware_y_representation)
 
@@ -199,8 +203,7 @@ def multi_perspective_match(repre1, repre2, scope='mp_match', reuse=tf.AUTO_REUS
 
             repre1_flat = tf.expand_dims(repre1, axis=2)
             repre2_flat = tf.expand_dims(repre2, axis=2)
-            # print(repre1_flat.shape)
-            # print(mp_cosine_params.shape)
+            # TODO: input repre1 and repre2 to conv, and then input cosine_distance
             mp_cosine_matching = cosine_distance(tf.multiply(repre1_flat, mp_cosine_params), repre2_flat)
             matching_result.append(mp_cosine_matching)
     matching_result = tf.concat(axis=2, values=matching_result)
