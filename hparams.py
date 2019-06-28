@@ -40,6 +40,11 @@ class Hparams:
     parser.add_argument('--with_max_attentive_match', default=True, type=bool)
     parser.add_argument('--att_dim', default=50, type=int)
     parser.add_argument('--att_type', default="symmetric")
+
+    #cnn agg
+    parser.add_argument('--filter_sizes', default='3,4,5')
+    parser.add_argument('--num_filters', default=128, type=int)
+
     # model
     # This is also the word embedding size , and must can divide by head num.
     parser.add_argument('--cosine_MP_dim', default=29, type=int,
