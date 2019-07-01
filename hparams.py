@@ -10,20 +10,20 @@ class Hparams:
     ## files
     parser.add_argument('--train', default='./data/snli_train.tsv',
                              help="training data")
-    parser.add_argument('--eval', default='./data/snli_dev.tsv',
+    parser.add_argument('--eval', default='./data/snli_test.tsv',
                              help="evaluation data")
 
     parser.add_argument('--model_path', default='FImatchE%02dL%.2fA%.2f')
     parser.add_argument('--modeldir', default='./model')
-    parser.add_argument('--vec_path', default='./data/vec/glove.840B.300d.txt')
+    parser.add_argument('--vec_path', default='./data/vec/snil_trimmed_vec.npy')
 
     ## vocabulary
     parser.add_argument('--vocab', default='./data/snli.vocab',
                         help="vocabulary file path")
 
     # training scheme
-    parser.add_argument('--batch_size', default=256, type=int)
-    parser.add_argument('--eval_batch_size', default=256, type=int)
+    parser.add_argument('--batch_size', default=128, type=int)
+    parser.add_argument('--eval_batch_size', default=128, type=int)
     parser.add_argument('--preembedding', default=False, type=bool)
     parser.add_argument('--early_stop', default=3, type=int)
 
@@ -47,7 +47,7 @@ class Hparams:
 
     # model
     # This is also the word embedding size , and must can divide by head num.
-    parser.add_argument('--cosine_MP_dim', default=29, type=int,
+    parser.add_argument('--cosine_MP_dim', default=20, type=int,
                         help="cosine_MP_dim")# tips MP_dim+1 should be abled divide by num_heads
     parser.add_argument('--with_cosine', default=True, type=bool,
                         help="with_cosine")
@@ -69,7 +69,7 @@ class Hparams:
                         help="maximum length of a source sequence")
     parser.add_argument('--num_class', default=3, type=int,
                         help="number of class")
-    parser.add_argument('--dropout_rate', default=0.3, type=float)
+    parser.add_argument('--dropout_rate', default=0.1, type=float)
 
     # test
     parser.add_argument('--test_file', default='./data/snli_test.tsv')
