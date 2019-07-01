@@ -269,10 +269,15 @@ class FI:
         match_result = []
         for x_repre, y_repre in zip(x_repre_list, y_repre_list):
             match_result.append(match_passage_with_question(x_repre, y_repre, x_mask, y_mask))
-        match_stack = tf.stack(match_result, -1) # (batchsize, maxlen, mp_dim, channels)
-        # aggre
-        agg_res = self.cnn_agg(match_stack)
 
+        match_result = tf.concat(axis=2, values=match_result)
+        #match_stack = tf.stack(match_result, -1) # (batchsize, maxlen, mp_dim, channels)
+        # aggre
+        #agg_res = self.cnn_agg(match_stack)
+        agg_res = self.aggregation(match_result, match_result)
+        avg_res = tf.reduce_mean(agg_res, axis=1)
+        max_res = tf.reduce_max(agg_res, axis=1)
+        agg_res = tf.concat([avg_res, max_res], axis=1)
         logits = self.fc(agg_res, match_dim=agg_res.shape.as_list()[-1])
 
         loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=self.truth))
