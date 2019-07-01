@@ -171,13 +171,14 @@ class FI:
             accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32), name='Accuracy')
         return accuracy
 
+    #将transformer的每层作为一个channel输入CNN
     def cnn_agg(self, match_channels):
         # Create a convolution + maxpool layer for each filter size
-        filter_size = list(map(int, self.hp.filter_sizes.split(",")))
+        filter_sizes = list(map(int, self.hp.filter_sizes.split(",")))
         embedding_size = match_channels.shape.as_list()[2]
         sequence_length = match_channels.shape.as_list()[1]
         pooled_outputs = []
-        for i, filter_size in enumerate(filter_size):
+        for i, filter_size in enumerate(filter_sizes):
             with tf.name_scope("conv-maxpool-%s" % filter_size):
                 # Convolution Layer
                 filter_shape = [filter_size, embedding_size, 6, self.hp.num_filters]
@@ -189,7 +190,6 @@ class FI:
                     strides=[1, 1, 1, 1],
                     padding="VALID",
                     name="conv")
-                print(conv.shape)
                 # Apply nonlinearity
                 h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
                 # Maxpooling over the outputs
@@ -202,7 +202,7 @@ class FI:
                 pooled_outputs.append(pooled)
 
         # Combine all the pooled features
-        num_filters_total = self.hp.num_filters * len(self.hp.filter_sizes)
+        num_filters_total = self.hp.num_filters * len(filter_sizes)
         h_pool = tf.concat(pooled_outputs, 3)
         h_pool_flat = tf.reshape(h_pool, [-1, num_filters_total])
 
@@ -221,10 +221,15 @@ class FI:
         match_result = []
         for x_repre, y_repre in zip(x_repre_list, y_repre_list):
             match_result.append(match_passage_with_question(x_repre, y_repre, x_mask, y_mask))
-        match_stack = tf.stack(match_result, -1) # (batchsize, maxlen, mp_dim, channels)
-        # aggre
-        agg_res = self.cnn_agg(match_stack)
 
+        match_result = tf.concat(axis=2, values=match_result)
+        #match_stack = tf.stack(match_result, -1) # (batchsize, maxlen, mp_dim, channels)
+        # aggre
+        #agg_res = self.cnn_agg(match_stack)
+        agg_res = self.aggregation(match_result, match_result)
+        avg_res = tf.reduce_mean(agg_res, axis=1)
+        max_res = tf.reduce_max(agg_res, axis=1)
+        agg_res = tf.concat([avg_res, max_res], axis=1)
         logits = self.fc(agg_res, match_dim=agg_res.shape.as_list()[-1])
 
         loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=self.truth))

@@ -34,10 +34,10 @@ class Hparams:
     parser.add_argument('--lambda_l2', default=0.004, type=float)
 
     # match
-    parser.add_argument('--with_maxpool_match', default=True, type=bool)
+    parser.add_argument('--with_maxpool_match', default=False, type=bool)
     parser.add_argument('--with_full_match', default=True, type=bool)
-    parser.add_argument('--with_attentive_match', default=True, type=bool)
-    parser.add_argument('--with_max_attentive_match', default=True, type=bool)
+    parser.add_argument('--with_attentive_match', default=False, type=bool)
+    parser.add_argument('--with_max_attentive_match', default=False, type=bool)
     parser.add_argument('--att_dim', default=50, type=int)
     parser.add_argument('--att_type', default="symmetric")
 

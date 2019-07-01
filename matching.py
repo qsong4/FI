@@ -147,8 +147,9 @@ def match_passage_with_question(x1, x2, x1_mask, x2_mask, scope="match_x_with_y"
     with tf.variable_scope(scope or "match_x_with_y", reuse=tf.AUTO_REUSE):
         relevancy_matrix = cal_relevancy_matrix(x_repre, y_repre) #(?, 50, 50)
         relevancy_matrix = mask_relevancy_matrix(relevancy_matrix, x1_mask, x2_mask)
-        all_x_aware_y_representation.append(tf.reduce_max(relevancy_matrix, axis=2, keepdims=True))
-        all_x_aware_y_representation.append(tf.reduce_mean(relevancy_matrix, axis=2, keepdims=True))
+        #all_x_aware_y_representation.append(tf.reduce_max(relevancy_matrix, axis=2, keepdims=True))
+        #all_x_aware_y_representation.append(tf.reduce_mean(relevancy_matrix, axis=2, keepdims=True))
+        all_x_aware_y_representation.append(relevancy_matrix)
         '''
         if hp.with_maxpool_match:
             maxpooling_decomp_params = tf.get_variable("maxpooling_decomp_params",
@@ -178,9 +179,7 @@ def match_passage_with_question(x1, x2, x1_mask, x2_mask, scope="match_x_with_y"
                                                                      scope='mp_max_att')
             all_x_aware_y_representation.append(max_attentive_rep)
         '''
-
     all_x_aware_y_representation = tf.concat(axis=2, values=all_x_aware_y_representation)
-
     return all_x_aware_y_representation
 
 

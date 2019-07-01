@@ -109,7 +109,7 @@ def save_variable_specs(fpath):
         return size
 
     params, num_params = [], 0
-    for v in tf.global_variables():
+    for v in tf.trainable_variables():
         params.append("{}==={}".format(v.name, v.shape))
         num_params += _get_size(v.shape)
     print("num_params: ", num_params)
