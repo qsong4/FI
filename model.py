@@ -79,12 +79,12 @@ class FI:
                 if i < self.hp.num_extract_blocks:
                     encx = self.base_blocks(encx, encx, training=training, scope="num_blocks_{}".format(i))
                     ency = self.base_blocks(ency, ency, training=training, scope="num_blocks_{}".format(i))
-                    encx, ency = localInference(encx, ency)
+                    #encx, ency = localInference(encx, ency)
                     x_layer.append(encx)
                     y_layer.append(ency)
                 else:
                     encx, ency = self.inter_blocks(encx, ency, training=training, scope="num_blocks_{}".format(i))
-                    encx, ency = localInference(encx, ency)
+                    #encx, ency = localInference(encx, ency)
                     x_layer.append(encx)
                     y_layer.append(ency)
         return x_layer, y_layer
