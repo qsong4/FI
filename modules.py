@@ -71,7 +71,7 @@ def scaled_dot_product_attention(Q, K, V,
         outputs /= d_k ** 0.5
 
         # key masking
-        outputs = mask(outputs, Q, K, type="key")
+        #outputs = mask(outputs, Q, K, type="key")
 
         # causality or future blinding masking
         if causality:
@@ -83,7 +83,7 @@ def scaled_dot_product_attention(Q, K, V,
         tf.summary.image("attention", tf.expand_dims(attention[:1], -1))
 
         # query masking
-        outputs = mask(outputs, Q, K, type="query")
+        #outputs = mask(outputs, Q, K, type="query")
 
         # dropout
         outputs = tf.layers.dropout(outputs, rate=dropout_rate, training=training)
