@@ -5,6 +5,10 @@ hparams = Hparams()
 parser = hparams.parser
 hp = parser.parse_args()
 
+# print tensor shape
+def print_shape(varname, var):
+    print('{0} : {1}'.format(varname, var.get_shape()))
+
 def calcuate_attention(in_value_1, in_value_2, feature_dim1, feature_dim2, scope_name='att',
                        att_type='symmetric', att_dim=20, remove_diagnoal=False, mask1=None, mask2=None, training=False):
     input_shape = tf.shape(in_value_1)
@@ -137,7 +141,41 @@ def cal_maxpooling_matching(x1, x2, decompose_params):
                                 dtype=tf.float32)  # [batch_size, passage_len, question_len, decompse_dim]
     return tf.concat(axis=2, values=[tf.reduce_max(matching_matrix, axis=2), tf.reduce_mean(matching_matrix,
                                                                                             axis=2)])  # [batch_size, passage_len, 2*decompse_dim]
+def localInference(x1, x2, scope="localinference"):
+    with tf.variable_scope(scope):
+        # e = a_bar.T * b_bar (11)
+        attentionWeights = tf.matmul(x1, tf.transpose(x2, [0, 2, 1]))
+        #print_shape('att_wei', attentionWeights)
 
+        # a_hat = softmax(e) * b_bar (12)
+        # b_hat = softmax(e) * a_bar (13)
+        attentionSoft_a = tf.nn.softmax(attentionWeights)
+        attentionSoft_b = tf.nn.softmax(tf.transpose(attentionWeights))
+        attentionSoft_b = tf.transpose(attentionSoft_b)
+        #print_shape('att_soft_a', attentionSoft_a)
+        #print_shape('att_soft_b', attentionSoft_b)
+
+        a_hat = tf.matmul(attentionSoft_a, x2)
+        b_hat = tf.matmul(attentionSoft_b, x1)
+        #print_shape('a_hat', a_hat)
+        #print_shape('b_hat', b_hat)
+
+        # a_diff = tf.subtract(x1, a_hat)
+        # a_mul = tf.multiply(x1, a_hat)
+        # print_shape('a_diff', a_diff)
+        # print_shape('a_mul', a_mul)
+        #
+        # b_diff = tf.subtract(x2, b_hat)
+        # b_mul = tf.multiply(x2, b_hat)
+        #
+        # # m_a = [a_bar, a_hat, a_bar - a_hat, a_bar 'dot' a_hat] (14)
+        # # m_b = [b_bar, b_hat, b_bar - b_hat, b_bar 'dot' b_hat] (15)
+        # m_a = tf.concat([x1, a_hat, a_diff, a_mul], axis=2)
+        # m_b = tf.concat([x2, b_hat, b_diff, b_mul], axis=2)
+        # print_shape('m_a', m_a)
+        # print_shape('m_b', m_b)
+        # return m_a, m_b
+        return a_hat, b_hat
 
 def match_passage_with_question(x1, x2, x1_mask, x2_mask, scope="match_x_with_y", training=True):
     x_repre = tf.multiply(x1, tf.expand_dims(x1_mask, axis=-1))
@@ -160,6 +198,11 @@ def match_passage_with_question(x1, x2, x1_mask, x2_mask, scope="match_x_with_y"
         if hp.with_full_match:
             attentive_rep = multi_perspective_match(x_repre, y_repre, scope='mp_full_match')
             all_x_aware_y_representation.append(attentive_rep)
+
+        # if hp.with_inference:
+        #     x_repre_res, y_repre_res = localInference(x_repre, y_repre)
+        #     all_x_aware_y_representation.append(x_repre_res)
+        #     all_x_aware_y_representation.append(y_repre_res)
 
         '''
         if hp.with_attentive_match:

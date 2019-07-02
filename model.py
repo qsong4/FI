@@ -2,7 +2,7 @@ import tensorflow as tf
 
 from data_load import load_vocab, loadGloVe
 from modules import get_token_embeddings, ff, positional_encoding, multihead_attention, ln, noam_scheme
-from matching import match_passage_with_question
+from matching import match_passage_with_question, localInference
 
 class FI:
     """
@@ -79,10 +79,12 @@ class FI:
                 if i < self.hp.num_extract_blocks:
                     encx = self.base_blocks(encx, encx, training=training, scope="num_blocks_{}".format(i))
                     ency = self.base_blocks(ency, ency, training=training, scope="num_blocks_{}".format(i))
+                    encx, ency = localInference(encx, ency)
                     x_layer.append(encx)
                     y_layer.append(ency)
                 else:
                     encx, ency = self.inter_blocks(encx, ency, training=training, scope="num_blocks_{}".format(i))
+                    encx, ency = localInference(encx, ency)
                     x_layer.append(encx)
                     y_layer.append(ency)
         return x_layer, y_layer
