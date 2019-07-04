@@ -78,6 +78,9 @@ with tf.Session() as sess:
         total_batch += 1
         epoch = math.ceil(_gs / num_train_batches)
 
+        if _gs and _gs % 500 == 0:
+            print("batch {:d}: loss {:.4f}, acc {:.3f} \n".format(_gs, _loss, train_acc))
+
         if _gs and _gs % num_train_batches == 0:
 
             print("\n")
