@@ -25,6 +25,13 @@ class FI:
         self.y_len = tf.placeholder(tf.int32, [None])
         self.truth = tf.placeholder(tf.int32, [None, self.hp.num_class], name="truth")
 
+        self.logits = self._logits_op()
+        self.loss = self._loss_op()
+        self.acc = self._acc_op()
+        self.global_step = self._globalStep_op()
+        self.train = self._training_op()
+
+
     def create_feed_dict(self, x, y, x_len, y_len, truth):
         feed_dict = {
             self.x: x,
@@ -141,7 +148,7 @@ class FI:
             for i in range(self.hp.num_agg_blocks):
                 with tf.variable_scope("num_blocks_{}".format(i), reuse=tf.AUTO_REUSE):
                     # Vanilla attention
-                    dec = multihead_attention(queries=b_repre,
+                    a_repre = multihead_attention(queries=a_repre,
                                               keys=a_repre,
                                               values=a_repre,
                                               num_heads=self.hp.num_heads,
@@ -150,8 +157,8 @@ class FI:
                                               causality=False,
                                               scope="vanilla_attention")
                     ### Feed Forward
-                    dec = ff(dec, num_units=[self.hp.d_ff, dim])
-        return dec
+                    a_repre = ff(a_repre, num_units=[self.hp.d_ff, dim])
+        return a_repre
 
     def fc(self, inpt, match_dim, reuse=tf.AUTO_REUSE):
         with tf.variable_scope("fc", reuse=reuse):
@@ -214,7 +221,7 @@ class FI:
 
         return h_drop
 
-    def build_model(self):
+    def _logits_op(self):
         # representation
         x_repre_list, y_repre_list = self.representation(self.x, self.y) #(layers, batchsize, maxlen, d_model)
         x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
@@ -233,21 +240,30 @@ class FI:
         max_res = tf.reduce_max(agg_res, axis=1)
         agg_res = tf.concat([avg_res, max_res], axis=1)
         logits = self.fc(agg_res, match_dim=agg_res.shape.as_list()[-1])
+        return logits
 
-        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=self.truth))
+    def _loss_op(self):
+        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.logits, labels=self.truth))
+        return loss
+
+    def _acc_op(self):
         with tf.variable_scope('acc', reuse=tf.AUTO_REUSE):
-            label_pred = tf.argmax(logits, 1, name='label_pred')
+            label_pred = tf.argmax(self.logits, 1, name='label_pred')
             label_true = tf.argmax(self.truth, 1, name='label_true')
             correct_pred = tf.equal(tf.cast(label_pred, tf.int32), tf.cast(label_true, tf.int32))
             accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32), name='Accuracy')
+        return accuracy
 
-        # train scheme
+    def _globalStep_op(self):
         global_step = tf.train.get_or_create_global_step()
-        lr = noam_scheme(self.hp.lr, global_step, self.hp.warmup_steps)
-        optimizer = tf.train.AdamOptimizer(lr)
+        return global_step
+
+    def _training_op(self):
+        # train scheme
+        #global_step = tf.train.get_or_create_global_step()
+        optimizer = tf.train.AdamOptimizer(self.hp.lr)
         #optimizer = tf.train.AdadeltaOptimizer(lr)
 
-        tvars = tf.trainable_variables()
         '''
         if self.hp.lambda_l2>0.0:
             l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in tvars if v.get_shape().ndims > 1])
@@ -258,39 +274,9 @@ class FI:
         # grads, _ = tf.clip_by_global_norm(grads, 10.0)
         # train_op = optimizer.minimize(loss, global_step=global_step)
 
-        train_op = optimizer.minimize(loss, global_step=global_step)
+        train_op = optimizer.minimize(self.loss, global_step=self.global_step)
 
-        return loss, train_op, global_step, accuracy, label_pred
-
-    def eval_model(self, is_training=True):
-        # representation
-        x_repre_list, y_repre_list = self.representation(self.x, self.y) #(layers, batchsize, maxlen, d_model)
-        x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
-        y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
-
-        match_result = []
-        for x_repre, y_repre in zip(x_repre_list, y_repre_list):
-            match_result.append(match_passage_with_question(x_repre, y_repre, x_mask, y_mask))
-
-        match_result = tf.concat(axis=2, values=match_result)
-        #match_stack = tf.stack(match_result, -1) # (batchsize, maxlen, mp_dim, channels)
-        # aggre
-        #agg_res = self.cnn_agg(match_stack)
-        agg_res = self.aggregation(match_result, match_result)
-        avg_res = tf.reduce_mean(agg_res, axis=1)
-        max_res = tf.reduce_max(agg_res, axis=1)
-        agg_res = tf.concat([avg_res, max_res], axis=1)
-        logits = self.fc(agg_res, match_dim=agg_res.shape.as_list()[-1])
-
-        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=self.truth))
-        with tf.variable_scope('acc', reuse=tf.AUTO_REUSE):
-            label_pred = tf.argmax(logits, 1, name='label_pred')
-            label_true = tf.argmax(self.truth, 1, name='label_true')
-            correct_pred = tf.equal(tf.cast(label_pred, tf.int32), tf.cast(label_true, tf.int32))
-            accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32), name='Accuracy')
-
-
-        return loss,  accuracy
+        return train_op
 
     def predict_model(self):
         # representation

@@ -18,7 +18,7 @@ def evaluate(sess, eval_init_op, num_eval_batches):
     total_loss = 0.0
     for i in range(total_steps + 1):
         #dev_acc, dev_loss = sess.run([dev_accuracy_op, dev_loss_op])
-        dev_acc, dev_loss = sess.run([dev_accuracy_op, dev_loss_op], feed_dict=feed_dict)
+        dev_acc, dev_loss = sess.run([m.acc, m.loss], feed_dict=feed_dict)
         #print("xxx", dev_loss)
         total_acc += dev_acc
         total_loss += dev_loss
@@ -44,8 +44,8 @@ eval_init_op = iter.make_initializer(eval_batches)
 
 print("# Load model")
 m = FI(hp)
-loss_op, train_op, global_step, accuracy_op, _= m.build_model()
-dev_loss_op, dev_accuracy_op = m.eval_model()
+#loss_op, train_op, global_step, accuracy_op, _= m.build_model()
+#dev_loss_op, dev_accuracy_op = m.eval_model()
 #dev_accuracy_op, dev_loss_op = m.eval(xs, ys, labels)
 # y_hat = m.infer(xs, ys)
 
@@ -63,7 +63,7 @@ with tf.Session() as sess:
 
     sess.run(train_init_op)
     total_steps = hp.num_epochs * num_train_batches
-    _gs = sess.run(global_step)
+    _gs = sess.run(m.global_step)
     best_acc = 0.0
     total_loss = 0.0
     total_acc = 0.0
@@ -72,14 +72,14 @@ with tf.Session() as sess:
     for i in tqdm(range(_gs, total_steps+1)):
         x, y, x_len, y_len, labels = sess.run(data_element)
         feed_dict = m.create_feed_dict(x, y, x_len, y_len, labels)
-        _, _loss, _accuracy, _gs = sess.run([train_op, loss_op, accuracy_op, global_step], feed_dict=feed_dict)
+        _, _loss, _accuracy, _gs = sess.run([m.train, m.loss, m.acc, m.global_step], feed_dict=feed_dict)
         total_loss += _loss
         total_acc += _accuracy
         total_batch += 1
         epoch = math.ceil(_gs / num_train_batches)
 
         if _gs and _gs % 500 == 0:
-            print("batch {:d}: loss {:.4f}, acc {:.3f} \n".format(_gs, _loss, train_acc))
+            print("batch {:d}: loss {:.4f}, acc {:.3f} \n".format(_gs, _loss, _accuracy))
 
         if _gs and _gs % num_train_batches == 0:
 
