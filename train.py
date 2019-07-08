@@ -80,10 +80,6 @@ with tf.Session() as sess:
 
         if _gs and _gs % 500 == 0:
             print("batch {:d}: loss {:.4f}, acc {:.3f} \n".format(_gs, _loss, _accuracy))
-            dev_loss, dev_acc = evaluate(sess, eval_init_op, num_eval_batches)
-            print("\n")
-            print("# evaluation results")
-            print("验证集: loss {:.4f}, acc {:.3f} \n".format(dev_loss, dev_acc))
 
         if _gs and _gs % num_train_batches == 0:
 
