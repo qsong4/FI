@@ -23,7 +23,7 @@ def loadGloVe_2(filename, emb_size):
         if row[0] in embd.keys():
             continue
         else:
-            embd[row[0]] = row[1:]
+            embd[row[0]] = [float(v) for v in row[1:]]
     file.close()
     return embd
 

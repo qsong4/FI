@@ -11,18 +11,18 @@ import math
 def evaluate(sess, eval_init_op, num_eval_batches):
 
     sess.run(eval_init_op)
-    x, y, x_len, y_len, labels = sess.run(data_element)
-    feed_dict = m.create_feed_dict(x, y, x_len, y_len, labels)
     total_steps = 1 * num_eval_batches
     total_acc = 0.0
     total_loss = 0.0
     for i in range(total_steps + 1):
+        x, y, x_len, y_len, labels = sess.run(data_element)
+        feed_dict = m.create_feed_dict(x, y, x_len, y_len, labels)
         #dev_acc, dev_loss = sess.run([dev_accuracy_op, dev_loss_op])
         dev_acc, dev_loss = sess.run([m.acc, m.loss], feed_dict=feed_dict)
         #print("xxx", dev_loss)
         total_acc += dev_acc
         total_loss += dev_loss
-    return total_loss/total_steps, total_acc/total_steps
+    return total_loss/num_eval_batches, total_acc/num_eval_batches
 
 print("# hparams")
 hparams = Hparams()
@@ -80,6 +80,10 @@ with tf.Session() as sess:
 
         if _gs and _gs % 500 == 0:
             print("batch {:d}: loss {:.4f}, acc {:.3f} \n".format(_gs, _loss, _accuracy))
+            dev_loss, dev_acc = evaluate(sess, eval_init_op, num_eval_batches)
+            print("\n")
+            print("# evaluation results")
+            print("验证集: loss {:.4f}, acc {:.3f} \n".format(dev_loss, dev_acc))
 
         if _gs and _gs % num_train_batches == 0:
 
