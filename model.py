@@ -232,7 +232,9 @@ class FI:
             match_result.append(match_passage_with_question(x_repre, y_repre, x_mask, y_mask))
 
         match_result = tf.concat(axis=2, values=match_result)
-        #match_stack = tf.stack(match_result, -1) # (batchsize, maxlen, mp_dim, channels)
+        # BN
+        match_result = tf.layers.batch_normalization(match_result, training=self.hp.is_training, name='bn1', reuse=tf.AUTO_REUSE)
+
         # aggre
         #agg_res = self.cnn_agg(match_stack)
         agg_res = self.aggregation(match_result, match_result)
@@ -273,8 +275,10 @@ class FI:
         # grads = self.compute_gradients(loss, tvars)
         # grads, _ = tf.clip_by_global_norm(grads, 10.0)
         # train_op = optimizer.minimize(loss, global_step=global_step)
-
-        train_op = optimizer.minimize(self.loss, global_step=self.global_step)
+        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        with tf.control_dependencies(update_ops):
+            # train_op = optimizer.minimize(loss)
+            train_op = optimizer.minimize(self.loss, global_step=self.global_step)
 
         return train_op
 

@@ -71,6 +71,7 @@ class Hparams:
     parser.add_argument('--num_class', default=3, type=int,
                         help="number of class")
     parser.add_argument('--dropout_rate', default=0.1, type=float)
+    parser.add_argument('--is_training', default=True, type=bool)
 
     # test
     parser.add_argument('--test_file', default='./data/snli_test.tsv')
