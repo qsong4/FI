@@ -120,6 +120,11 @@ class FI:
 
     def _infer(self, encx, ency, scope="local_inference"):
         with tf.variable_scope(scope):
+            x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
+            y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
+            match_result_x = match_passage_with_question(encx, ency, x_mask, y_mask)
+            match_result_y = match_passage_with_question(ency, encx, x_mask, y_mask)
+
             attentionWeights = tf.matmul(encx, tf.transpose(ency, [0, 2, 1]))
             attentionSoft_a = tf.nn.softmax(attentionWeights)
             attentionSoft_b = tf.nn.softmax(tf.transpose(attentionWeights))
@@ -133,8 +138,10 @@ class FI:
             b_diff = tf.subtract(ency, b_hat)
             b_mul = tf.multiply(ency, b_hat)
 
-            a_res = tf.concat([a_hat, a_diff, a_mul], axis=2)
-            b_res = tf.concat([b_hat, b_diff, b_mul], axis=2)
+            a_res = tf.concat([a_hat, a_diff, a_mul, match_result_x], axis=2)
+            b_res = tf.concat([b_hat, b_diff, b_mul, match_result_y], axis=2)
+
+
 
             # BN
             #a_res = tf.layers.batch_normalization(a_res, training=self.hp.is_training, name='bn1', reuse=tf.AUTO_REUSE)
