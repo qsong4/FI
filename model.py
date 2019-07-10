@@ -133,15 +133,21 @@ class FI:
             b_diff = tf.subtract(ency, b_hat)
             b_mul = tf.multiply(ency, b_hat)
 
-            a_res = tf.concat([encx, a_hat, a_diff, a_mul], axis=2)
-            b_res = tf.concat([ency, b_hat, b_diff, b_mul], axis=2)
+            a_res = tf.concat([a_hat, a_diff, a_mul], axis=2)
+            b_res = tf.concat([b_hat, b_diff, b_mul], axis=2)
 
             # BN
-            a_res = tf.layers.batch_normalization(a_res, training=self.hp.is_training, name='bn1', reuse=tf.AUTO_REUSE)
-            b_res = tf.layers.batch_normalization(b_res, training=self.hp.is_training, name='bn2', reuse=tf.AUTO_REUSE)
+            #a_res = tf.layers.batch_normalization(a_res, training=self.hp.is_training, name='bn1', reuse=tf.AUTO_REUSE)
+            #b_res = tf.layers.batch_normalization(b_res, training=self.hp.is_training, name='bn2', reuse=tf.AUTO_REUSE)
             # project
             a_res = self._project_op(a_res)  # (?,?,d_model)
             b_res = self._project_op(b_res)  # (?,?,d_model)
+
+            a_res += encx
+            b_res += ency
+
+            a_res = ln(a_res)
+            b_res = ln(b_res)
 
         return a_res, b_res
 
@@ -279,17 +285,15 @@ class FI:
     def _logits_op(self):
         # representation
         x_repre, y_repre = self.representation(self.x, self.y) #(layers, batchsize, maxlen, d_model)
-        #x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
-        #y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
 
-        print(x_repre.shape)
-        match_result = tf.concat([x_repre, y_repre], axis=2)
         # BN
-        #match_result = tf.layers.batch_normalization(match_result, training=self.hp.is_training, name='bn1', reuse=tf.AUTO_REUSE)
+        x_repre = tf.layers.batch_normalization(x_repre, training=self.hp.is_training, name='bn1', reuse=tf.AUTO_REUSE)
+        y_repre = tf.layers.batch_normalization(y_repre, training=self.hp.is_training, name='bn2', reuse=tf.AUTO_REUSE)
 
         # aggre
-        #agg_res = self.cnn_agg(match_stack)
-        #agg_res = self.aggregation(match_result, match_result)
+        x_repre = self.aggregation(x_repre, x_repre)
+        y_repre = self.aggregation(y_repre, y_repre)
+
         avg_x = tf.reduce_mean(x_repre, axis=1)
         max_x = tf.reduce_max(x_repre, axis=1)
         avg_y = tf.reduce_mean(y_repre, axis=1)
