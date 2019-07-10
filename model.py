@@ -82,22 +82,77 @@ class FI:
             ## Blocks
             x_layer = []
             y_layer = []
-            for i in range(self.hp.num_extract_blocks + self.hp.num_inter_blocks):
-                if i < self.hp.num_extract_blocks:
-                    encx = self.base_blocks(encx, encx, training=training, scope="num_blocks_{}".format(i))
-                    ency = self.base_blocks(ency, ency, training=training, scope="num_blocks_{}".format(i))
-                    #encx, ency = localInference(encx, ency)
-                    x_layer.append(encx)
-                    y_layer.append(ency)
-                else:
-                    encx, ency = self.inter_blocks(encx, ency, training=training, scope="num_blocks_{}".format(i))
-                    #encx, ency = localInference(encx, ency)
-                    x_layer.append(encx)
-                    y_layer.append(ency)
-        return x_layer, y_layer
-        #return encx, ency
+            for i in range(self.hp.inference_blocks):
+                encx, ency = self.inference_blocks(encx, ency, training=training, scope="num_blocks_{}".format(i))
+        #return x_layer, y_layer
+        return encx, ency
 
     #def match_sentences(self, x_steps, t_stepss):
+
+    def inference_blocks(self, a_repre, b_repre, scope, training=True, reuse=tf.AUTO_REUSE):
+        with tf.variable_scope(scope, reuse=reuse):
+            # self-attention
+            encx = multihead_attention(queries=a_repre,
+                                       keys=a_repre,
+                                       values=a_repre,
+                                       num_heads=self.hp.num_heads,
+                                       dropout_rate=self.hp.dropout_rate,
+                                       training=training,
+                                       causality=False)
+            # feed forward
+            encx = ff(encx, num_units=[self.hp.d_ff, self.hp.d_model])
+
+            # self-attention
+            ency = multihead_attention(queries=b_repre,
+                                       keys=b_repre,
+                                       values=b_repre,
+                                       num_heads=self.hp.num_heads,
+                                       dropout_rate=self.hp.dropout_rate,
+                                       training=training,
+                                       causality=False)
+            # feed forward
+            ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
+
+            encx, ency = self._infer(encx, ency)
+
+            return encx, ency
+
+
+    def _infer(self, encx, ency, scope="local_inference"):
+        with tf.variable_scope(scope):
+            attentionWeights = tf.matmul(encx, tf.transpose(ency, [0, 2, 1]))
+            attentionSoft_a = tf.nn.softmax(attentionWeights)
+            attentionSoft_b = tf.nn.softmax(tf.transpose(attentionWeights))
+            attentionSoft_b = tf.transpose(attentionSoft_b)
+
+            a_hat = tf.matmul(attentionSoft_a, ency)
+            b_hat = tf.matmul(attentionSoft_b, encx)
+
+            a_diff = tf.subtract(encx, a_hat)
+            a_mul = tf.multiply(encx, a_hat)
+            b_diff = tf.subtract(ency, b_hat)
+            b_mul = tf.multiply(ency, b_hat)
+
+            a_res = tf.concat([encx, a_hat, a_diff, a_mul], axis=2)
+            b_res = tf.concat([ency, b_hat, b_diff, b_mul], axis=2)
+
+            # BN
+            a_res = tf.layers.batch_normalization(a_res, training=self.hp.is_training, name='bn1', reuse=tf.AUTO_REUSE)
+            b_res = tf.layers.batch_normalization(b_res, training=self.hp.is_training, name='bn2', reuse=tf.AUTO_REUSE)
+            # project
+            a_res = self._project_op(a_res)  # (?,?,d_model)
+            b_res = self._project_op(b_res)  # (?,?,d_model)
+
+        return a_res, b_res
+
+    def _project_op(self, inputx):
+        with tf.variable_scope("projection", reuse=tf.AUTO_REUSE):
+            inputx = tf.layers.dense(inputx, self.hp.d_model,
+                                     activation=tf.nn.relu,
+                                     name='fnn',
+                                     kernel_initializer=tf.truncated_normal_initializer(stddev=0.02))
+
+            return inputx
 
 
     def base_blocks(self, a_repre, b_repre, scope, training=True, reuse=tf.AUTO_REUSE):
@@ -223,24 +278,23 @@ class FI:
 
     def _logits_op(self):
         # representation
-        x_repre_list, y_repre_list = self.representation(self.x, self.y) #(layers, batchsize, maxlen, d_model)
-        x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
-        y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
+        x_repre, y_repre = self.representation(self.x, self.y) #(layers, batchsize, maxlen, d_model)
+        #x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
+        #y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
 
-        match_result = []
-        for x_repre, y_repre in zip(x_repre_list, y_repre_list):
-            match_result.append(match_passage_with_question(x_repre, y_repre, x_mask, y_mask))
-
-        match_result = tf.concat(axis=2, values=match_result)
+        print(x_repre.shape)
+        match_result = tf.concat([x_repre, y_repre], axis=2)
         # BN
-        match_result = tf.layers.batch_normalization(match_result, training=self.hp.is_training, name='bn1', reuse=tf.AUTO_REUSE)
+        #match_result = tf.layers.batch_normalization(match_result, training=self.hp.is_training, name='bn1', reuse=tf.AUTO_REUSE)
 
         # aggre
         #agg_res = self.cnn_agg(match_stack)
-        agg_res = self.aggregation(match_result, match_result)
-        avg_res = tf.reduce_mean(agg_res, axis=1)
-        max_res = tf.reduce_max(agg_res, axis=1)
-        agg_res = tf.concat([avg_res, max_res], axis=1)
+        #agg_res = self.aggregation(match_result, match_result)
+        avg_x = tf.reduce_mean(x_repre, axis=1)
+        max_x = tf.reduce_max(x_repre, axis=1)
+        avg_y = tf.reduce_mean(y_repre, axis=1)
+        max_y = tf.reduce_max(y_repre, axis=1)
+        agg_res = tf.concat([avg_x, avg_y, max_x, max_y], axis=1)
         logits = self.fc(agg_res, match_dim=agg_res.shape.as_list()[-1])
         return logits
 

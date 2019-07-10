@@ -60,6 +60,8 @@ class Hparams:
                         help="hidden dimension of feedforward layer")
     parser.add_argument('--num_extract_blocks', default=3, type=int,
                         help="number of extract blocks")
+    parser.add_argument('--inference_blocks', default=6, type=int,
+                        help="number of inference_blocks")
     parser.add_argument('--num_inter_blocks', default=3, type=int,
                         help="number of inter blocks")
     parser.add_argument('--num_agg_blocks', default=3, type=int,
