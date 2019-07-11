@@ -16,7 +16,7 @@ def evaluate(sess, eval_init_op, num_eval_batches):
     total_loss = 0.0
     for i in range(total_steps + 1):
         x, y, x_len, y_len, labels = sess.run(data_element)
-        feed_dict = m.create_feed_dict(x, y, x_len, y_len, labels)
+        feed_dict = m.create_feed_dict(x, y, x_len, y_len, labels, False)
         #dev_acc, dev_loss = sess.run([dev_accuracy_op, dev_loss_op])
         dev_acc, dev_loss = sess.run([m.acc, m.loss], feed_dict=feed_dict)
         #print("xxx", dev_loss)
@@ -71,7 +71,7 @@ with tf.Session() as sess:
     tolerant = 0
     for i in tqdm(range(_gs, total_steps+1)):
         x, y, x_len, y_len, labels = sess.run(data_element)
-        feed_dict = m.create_feed_dict(x, y, x_len, y_len, labels)
+        feed_dict = m.create_feed_dict(x, y, x_len, y_len, labels, True)
         _, _loss, _accuracy, _gs = sess.run([m.train, m.loss, m.acc, m.global_step], feed_dict=feed_dict)
         total_loss += _loss
         total_acc += _accuracy

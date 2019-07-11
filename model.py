@@ -24,6 +24,7 @@ class FI:
         self.x_len = tf.placeholder(tf.int32, [None])
         self.y_len = tf.placeholder(tf.int32, [None])
         self.truth = tf.placeholder(tf.int32, [None, self.hp.num_class], name="truth")
+        self.is_training = tf.placeholder(tf.bool,shape=None, name="is_training")
 
         self.logits = self._logits_op()
         self.loss = self._loss_op()
@@ -31,13 +32,14 @@ class FI:
         self.global_step = self._globalStep_op()
         self.train = self._training_op()
 
-    def create_feed_dict(self, x, y, x_len, y_len, truth):
+    def create_feed_dict(self, x, y, x_len, y_len, truth, is_training):
         feed_dict = {
             self.x: x,
             self.y: y,
             self.x_len: x_len,
             self.y_len: y_len,
             self.truth: truth,
+            self.is_training: is_training,
         }
 
         return feed_dict
@@ -65,13 +67,13 @@ class FI:
             encx *= self.hp.d_model ** 0.5  # scale
 
             encx += positional_encoding(encx, self.hp.maxlen)
-            encx = tf.layers.dropout(encx, self.hp.dropout_rate, training=self.hp.is_training)
+            encx = tf.layers.dropout(encx, self.hp.dropout_rate, training=self.is_training)
 
             ency = tf.nn.embedding_lookup(self.embeddings, y)  # (N, T1, d_model)
             ency *= self.hp.d_model ** 0.5  # scale
 
             ency += positional_encoding(ency, self.hp.maxlen)
-            ency = tf.layers.dropout(ency, self.hp.dropout_rate, training=self.hp.is_training)
+            ency = tf.layers.dropout(ency, self.hp.dropout_rate, training=self.is_training)
 
             # add ln
             encx = ln(encx)
@@ -105,7 +107,7 @@ class FI:
                                        values=a_repre,
                                        num_heads=self.hp.num_heads,
                                        dropout_rate=self.hp.dropout_rate,
-                                       training=self.hp.is_training,
+                                       training=self.is_training,
                                        causality=False)
             # feed forward
             encx = ff(encx, num_units=[self.hp.d_ff, self.hp.d_model])
@@ -116,7 +118,7 @@ class FI:
                                        values=b_repre,
                                        num_heads=self.hp.num_heads,
                                        dropout_rate=self.hp.dropout_rate,
-                                       training=self.hp.is_training,
+                                       training=self.is_training,
                                        causality=False)
             # feed forward
             ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
@@ -149,8 +151,8 @@ class FI:
             b_res = tf.concat([b_hat, b_diff, b_mul], axis=2)
 
             # BN
-            # a_res = tf.layers.batch_normalization(a_res, training=self.hp.is_training, name='bn1', reuse=tf.AUTO_REUSE)
-            # b_res = tf.layers.batch_normalization(b_res, training=self.hp.is_training, name='bn2', reuse=tf.AUTO_REUSE)
+            # a_res = tf.layers.batch_normalization(a_res, training=self.is_training, name='bn1', reuse=tf.AUTO_REUSE)
+            # b_res = tf.layers.batch_normalization(b_res, training=self.is_training, name='bn2', reuse=tf.AUTO_REUSE)
             # project
             a_res = self._project_op(a_res)  # (?,?,d_model)
             b_res = self._project_op(b_res)  # (?,?,d_model)
@@ -180,7 +182,7 @@ class FI:
                                        values=a_repre,
                                        num_heads=self.hp.num_heads,
                                        dropout_rate=self.hp.dropout_rate,
-                                       training=self.hp.is_training,
+                                       training=self.is_training,
                                        causality=False)
             # feed forward
             encx = ff(encx, num_units=[self.hp.d_ff, self.hp.d_model])
@@ -194,7 +196,7 @@ class FI:
                                        values=a_repre,
                                        num_heads=self.hp.num_heads,
                                        dropout_rate=self.hp.dropout_rate,
-                                       training=self.hp.is_training,
+                                       training=self.is_training,
                                        causality=False)
             # feed forward
             encx = ff(encx, num_units=[self.hp.d_ff, self.hp.d_model])
@@ -205,7 +207,7 @@ class FI:
                                        values=b_repre,
                                        num_heads=self.hp.num_heads,
                                        dropout_rate=self.hp.dropout_rate,
-                                       training=self.hp.is_training,
+                                       training=self.is_training,
                                        causality=False)
             # feed forward
             ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
@@ -224,7 +226,7 @@ class FI:
                                                   values=a_repre,
                                                   num_heads=self.hp.num_heads,
                                                   dropout_rate=self.hp.dropout_rate,
-                                                  training=self.hp.is_training,
+                                                  training=self.is_training,
                                                   causality=False,
                                                   scope="vanilla_attention")
                     ### Feed Forward
@@ -297,8 +299,8 @@ class FI:
         x_repre, y_repre = self.representation(self.x, self.y)  # (layers, batchsize, maxlen, d_model)
 
         # BN
-        x_repre = tf.layers.batch_normalization(x_repre, training=self.hp.is_training, name='bn1', reuse=tf.AUTO_REUSE)
-        y_repre = tf.layers.batch_normalization(y_repre, training=self.hp.is_training, name='bn2', reuse=tf.AUTO_REUSE)
+        x_repre = tf.layers.batch_normalization(x_repre, training=self.is_training, name='bn1', reuse=tf.AUTO_REUSE)
+        y_repre = tf.layers.batch_normalization(y_repre, training=self.is_training, name='bn2', reuse=tf.AUTO_REUSE)
 
         # aggre
         x_repre = self.aggregation(x_repre, x_repre)
