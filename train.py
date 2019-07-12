@@ -7,6 +7,7 @@ from utils import save_variable_specs
 import os
 from hparams import Hparams
 import math
+#os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 
 def evaluate(sess, eval_init_op, num_eval_batches):
 
