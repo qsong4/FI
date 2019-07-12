@@ -79,21 +79,14 @@ class FI:
             encx = ln(encx)
             ency = ln(ency)
 
-            ## Blocks
-            x_layer = []
-            y_layer = []
-            # represention Block
-            for i in range(self.hp.num_extract_blocks):
-                encx = self.base_blocks(encx, scope="num_extract_blocks_{}".format(i))
-                ency = self.base_blocks(ency, scope="num_extract_blocks_{}".format(i))
-
-            # add ln
-            encx = ln(encx)
-            ency = ln(ency)
-
             # Inference Block
             for i in range(self.hp.inference_blocks):
                 encx, ency = self.inference_blocks(encx, ency, scope="num_inference_blocks_{}".format(i))
+
+            # Inter Inference Block
+            for i in range(self.hp.num_inter_blocks):
+                encx, ency = self.inter_blocks(encx, ency, scope="num_inter_blocks_{}".format(i))
+
         # return x_layer, y_layer
         return encx, ency
 
@@ -211,6 +204,8 @@ class FI:
                                        causality=False)
             # feed forward
             ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
+
+            encx, ency = self._infer(encx, ency)
 
         return encx, ency
 
