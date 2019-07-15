@@ -79,13 +79,14 @@ class FI:
             encx = ln(encx)
             ency = ln(ency)
 
-            # Inference Block
-            for i in range(self.hp.inference_blocks):
-                encx, ency = self.inference_blocks(encx, ency, scope="num_inference_blocks_{}".format(i))
-
+            # 这两个模块可以互换
             # Inter Inference Block
             for i in range(self.hp.num_inter_blocks):
                 encx, ency = self.inter_blocks(encx, ency, scope="num_inter_blocks_{}".format(i))
+
+            # Inference Block
+            for i in range(self.hp.inference_blocks):
+                encx, ency = self.inference_blocks(encx, ency, scope="num_inference_blocks_{}".format(i))
 
         # return x_layer, y_layer
         return encx, ency
@@ -102,8 +103,6 @@ class FI:
                                        dropout_rate=self.hp.dropout_rate,
                                        training=self.is_training,
                                        causality=False)
-            # feed forward
-            encx = ff(encx, num_units=[self.hp.d_ff, self.hp.d_model])
 
             # self-attention
             ency = multihead_attention(queries=b_repre,
@@ -113,10 +112,15 @@ class FI:
                                        dropout_rate=self.hp.dropout_rate,
                                        training=self.is_training,
                                        causality=False)
-            # feed forward
-            ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
 
             encx, ency = self._infer(encx, ency)
+            # feed forward
+            encx = ff(encx, num_units=[self.hp.d_ff, self.hp.d_model])
+            ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
+
+            #先进行infer然后再过全连接
+            #encx = ff(encx, num_units=[self.hp.d_ff, self.hp.d_model])
+            #ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
 
             return encx, ency
 

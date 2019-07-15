@@ -24,11 +24,12 @@ class Hparams:
     # training scheme
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--eval_batch_size', default=128, type=int)
-    parser.add_argument('--preembedding', default=False, type=bool)
+    parser.add_argument('--preembedding', default=False, type=bool) #本地测试使用
+    #parser.add_argument('--preembedding', default=True, type=bool) #实际训练使用
     parser.add_argument('--early_stop', default=20, type=int)
 
     #learning rate 0.0003 is too high
-    parser.add_argument('--lr', default=0.0003, type=float, help="learning rate")
+    parser.add_argument('--lr', default=0.0001, type=float, help="learning rate")
     parser.add_argument('--warmup_steps', default=4000, type=int)
     parser.add_argument('--num_epochs', default=40, type=int)
     parser.add_argument('--lambda_l2', default=0.004, type=float)
@@ -60,7 +61,7 @@ class Hparams:
                         help="hidden dimension of feedforward layer")
     parser.add_argument('--num_extract_blocks', default=3, type=int,
                         help="number of extract blocks")
-    parser.add_argument('--inference_blocks', default=6, type=int,
+    parser.add_argument('--inference_blocks', default=3, type=int,
                         help="number of inference_blocks")
     parser.add_argument('--num_inter_blocks', default=3, type=int,
                         help="number of inter blocks")
