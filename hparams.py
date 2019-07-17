@@ -40,7 +40,7 @@ class Hparams:
     parser.add_argument('--with_attentive_match', default=False, type=bool)
     parser.add_argument('--with_max_attentive_match', default=False, type=bool)
     parser.add_argument('--with_inference', default=True, type=bool)
-    parser.add_argument('--att_dim', default=50, type=int)
+    parser.add_argument('--att_dim', default=300, type=int)
     parser.add_argument('--att_type', default="symmetric")
 
     #cnn agg

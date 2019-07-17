@@ -3,6 +3,7 @@ import tensorflow as tf
 from data_load import load_vocab, loadGloVe
 from modules import get_token_embeddings, ff, positional_encoding, multihead_attention, ln, noam_scheme
 from matching import match_passage_with_question, localInference
+from tensorflow.python.ops import nn_ops
 
 
 class FI:
@@ -124,14 +125,79 @@ class FI:
 
             return encx, ency
 
+    def calcuate_attention(self, in_value_1, in_value_2, feature_dim1, feature_dim2, scope_name='att',
+                           att_type='symmetric', att_dim=20, remove_diagnoal=False, mask1=None, mask2=None):
+        input_shape = tf.shape(in_value_1)
+        batch_size = input_shape[0]
+        len_1 = input_shape[1]
+        len_2 = tf.shape(in_value_2)[1]
+
+        #in_value_1 = tf.layers.dropout(in_value_1, hp.dropout_rate, training=training)
+        #in_value_2 = tf.layers.dropout(in_value_2, hp.dropout_rate, training=training)
+        with tf.variable_scope(scope_name):
+            # calculate attention ==> a: [batch_size, len_1, len_2]
+            atten_w1 = tf.get_variable("atten_w1", [feature_dim1, att_dim], dtype=tf.float32)
+            if feature_dim1 == feature_dim2:
+                atten_w2 = atten_w1
+            else:
+                atten_w2 = tf.get_variable("atten_w2", [feature_dim2, att_dim], dtype=tf.float32)
+            atten_value_1 = tf.matmul(tf.reshape(in_value_1, [batch_size * len_1, feature_dim1]),
+                                      atten_w1)  # [batch_size*len_1, feature_dim]
+            atten_value_1 = tf.reshape(atten_value_1, [batch_size, len_1, att_dim])
+            atten_value_2 = tf.matmul(tf.reshape(in_value_2, [batch_size * len_2, feature_dim2]),
+                                      atten_w2)  # [batch_size*len_2, feature_dim]
+            atten_value_2 = tf.reshape(atten_value_2, [batch_size, len_2, att_dim])
+
+            if att_type == 'additive':
+                atten_b = tf.get_variable("atten_b", [att_dim], dtype=tf.float32)
+                atten_v = tf.get_variable("atten_v", [1, att_dim], dtype=tf.float32)
+                atten_value_1 = tf.expand_dims(atten_value_1, axis=2,
+                                               name="atten_value_1")  # [batch_size, len_1, 'x', feature_dim]
+                atten_value_2 = tf.expand_dims(atten_value_2, axis=1,
+                                               name="atten_value_2")  # [batch_size, 'x', len_2, feature_dim]
+                atten_value = atten_value_1 + atten_value_2  # + tf.expand_dims(tf.expand_dims(tf.expand_dims(atten_b, axis=0), axis=0), axis=0)
+                atten_value = nn_ops.bias_add(atten_value, atten_b)
+                atten_value = tf.tanh(atten_value)  # [batch_size, len_1, len_2, feature_dim]
+                atten_value = tf.reshape(atten_value, [-1,
+                                                       att_dim]) * atten_v  # tf.expand_dims(atten_v, axis=0) # [batch_size*len_1*len_2, feature_dim]
+                atten_value = tf.reduce_sum(atten_value, axis=-1)
+                atten_value = tf.reshape(atten_value, [batch_size, len_1, len_2])
+            else:
+                atten_value_1 = tf.tanh(atten_value_1)
+                # atten_value_1 = tf.nn.relu(atten_value_1)
+                atten_value_2 = tf.tanh(atten_value_2)
+                # atten_value_2 = tf.nn.relu(atten_value_2)
+                diagnoal_params = tf.get_variable("diagnoal_params", [1, 1, att_dim], dtype=tf.float32)
+                atten_value_1 = atten_value_1 * diagnoal_params
+                atten_value = tf.matmul(atten_value_1, atten_value_2, transpose_b=True)  # [batch_size, len_1, len_2]
+
+            # normalize
+            if remove_diagnoal:
+                diagnoal = tf.ones([len_1], tf.float32)  # [len1]
+                diagnoal = 1.0 - tf.diag(diagnoal)  # [len1, len1]
+                diagnoal = tf.expand_dims(diagnoal, axis=0)  # ['x', len1, len1]
+                atten_value = atten_value * diagnoal
+            if mask1 is not None: atten_value = tf.multiply(atten_value, tf.expand_dims(mask1, axis=-1))
+            if mask2 is not None: atten_value = tf.multiply(atten_value, tf.expand_dims(mask2, axis=1))
+            atten_value = tf.nn.softmax(atten_value, name='atten_value')  # [batch_size, len_1, len_2]
+            if remove_diagnoal: atten_value = atten_value * diagnoal
+            if mask1 is not None: atten_value = tf.multiply(atten_value, tf.expand_dims(mask1, axis=-1))
+            if mask2 is not None: atten_value = tf.multiply(atten_value, tf.expand_dims(mask2, axis=1))
+
+        return atten_value
+
     def _infer(self, encx, ency, scope="local_inference"):
         with tf.variable_scope(scope):
-            # x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
-            # y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
+            x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
+            y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
             # match_result_x = match_passage_with_question(encx, ency, x_mask, y_mask)
             # match_result_y = match_passage_with_question(ency, encx, x_mask, y_mask)
 
-            attentionWeights = tf.matmul(encx, tf.transpose(ency, [0, 2, 1]))
+            attentionWeights = self.calcuate_attention(encx, ency, self.hp.d_model, self.hp.d_model,
+                                              scope_name="attention", att_type=self.hp.att_type, att_dim=self.hp.att_dim,
+                                              remove_diagnoal=False, mask1=x_mask, mask2=y_mask)
+
+            #attentionWeights = tf.matmul(encx, tf.transpose(ency, [0, 2, 1]))
             attentionSoft_a = tf.nn.softmax(attentionWeights)
             attentionSoft_b = tf.nn.softmax(tf.transpose(attentionWeights))
             attentionSoft_b = tf.transpose(attentionSoft_b)
