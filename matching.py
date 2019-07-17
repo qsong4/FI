@@ -177,6 +177,15 @@ def localInference(x1, x2, scope="localinference"):
         # return m_a, m_b
         return a_hat, b_hat
 
+def calculate_rele(x1, x2, x1_mask, x2_mask, scope="x_y_cosine"):
+    x_repre = tf.multiply(x1, tf.expand_dims(x1_mask, axis=-1))
+    y_repre = tf.multiply(x2, tf.expand_dims(x2_mask, axis=-1))
+    with tf.variable_scope(scope or "x_y_cosine", reuse=tf.AUTO_REUSE):
+        relevancy_matrix = cal_relevancy_matrix(x_repre, y_repre) #(?, 50, 50)
+        relevancy_matrix = mask_relevancy_matrix(relevancy_matrix, x1_mask, x2_mask)
+
+    return relevancy_matrix
+
 def match_passage_with_question(x1, x2, x1_mask, x2_mask, scope="match_x_with_y", training=True):
     x_repre = tf.multiply(x1, tf.expand_dims(x1_mask, axis=-1))
     y_repre = tf.multiply(x2, tf.expand_dims(x2_mask, axis=-1))

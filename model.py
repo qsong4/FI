@@ -2,7 +2,7 @@ import tensorflow as tf
 
 from data_load import load_vocab, loadGloVe
 from modules import get_token_embeddings, ff, positional_encoding, multihead_attention, ln, noam_scheme
-from matching import match_passage_with_question, localInference
+from matching import match_passage_with_question, localInference, calculate_rele
 from tensorflow.python.ops import nn_ops
 
 
@@ -82,17 +82,52 @@ class FI:
 
             # 这两个模块可以互换
             # Inter Inference Block
-            for i in range(self.hp.num_inter_blocks):
-                encx, ency = self.inter_blocks(encx, ency, scope="num_inter_blocks_{}".format(i))
+            # for i in range(self.hp.num_inter_blocks):
+            #     encx, ency = self.inter_blocks(encx, ency, scope="num_inter_blocks_{}".format(i))
+
+            x_layer = []
+            y_layer = []
+
+            x_layer.append(encx)
+            y_layer.append(ency)
 
             # Inference Block
             for i in range(self.hp.inference_blocks):
-                encx, ency = self.inference_blocks(encx, ency, scope="num_inference_blocks_{}".format(i))
+                #encx, ency = self.inference_blocks(encx, ency, scope="num_inference_blocks_{}".format(i))
+                encx, ency = self.dense_blocks(encx, ency, x_layer, y_layer, scope="num_inference_blocks_{}".format(i))
+                x_layer.append(encx)
+                y_layer.append(ency)
 
         # return x_layer, y_layer
         return encx, ency
 
-    # def match_sentences(self, x_steps, t_stepss):
+    def dense_blocks(self, a_repre, b_repre, x_layer, y_layer, scope, reuse=tf.AUTO_REUSE):
+        with tf.variable_scope(scope, reuse=reuse):
+            # self-attention
+            encx = multihead_attention(queries=a_repre,
+                                       keys=a_repre,
+                                       values=a_repre,
+                                       num_heads=self.hp.num_heads,
+                                       dropout_rate=self.hp.dropout_rate,
+                                       training=self.is_training,
+                                       causality=False)
+
+            # self-attention
+            ency = multihead_attention(queries=b_repre,
+                                       keys=b_repre,
+                                       values=b_repre,
+                                       num_heads=self.hp.num_heads,
+                                       dropout_rate=self.hp.dropout_rate,
+                                       training=self.is_training,
+                                       causality=False)
+
+            encx, ency = self._dense_infer(encx, ency, x_layer, y_layer)
+
+            # feed forward
+            encx = ff(encx, num_units=[self.hp.d_ff, self.hp.d_model])
+            ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
+
+            return encx, ency
 
     def inference_blocks(self, a_repre, b_repre, scope, reuse=tf.AUTO_REUSE):
         with tf.variable_scope(scope, reuse=reuse):
@@ -185,6 +220,26 @@ class FI:
             if mask2 is not None: atten_value = tf.multiply(atten_value, tf.expand_dims(mask2, axis=1))
 
         return atten_value
+
+    def _dense_infer(self, encx, ency, x_layer, y_layer, scope="dese_local_inference"):
+        with tf.variable_scope(scope):
+            x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
+            y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
+
+            attentionWeights = calculate_rele(encx, ency, x_mask, y_mask)
+
+            a_res = tf.concat(x_layer + [encx, attentionWeights], axis=2)
+            b_res = tf.concat(y_layer + [ency, attentionWeights], axis=2)
+            print("a_res shape:", a_res.shape)
+            print("b_res shape:", b_res.shape)
+
+            a_res = self._project_op(a_res)  # (?,?,d_model)
+            b_res = self._project_op(b_res)  # (?,?,d_model)
+
+        return a_res, b_res
+
+
+
 
     def _infer(self, encx, ency, scope="local_inference"):
         with tf.variable_scope(scope):
