@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from data_load import load_vocab, loadGloVe
+from data_load import load_vocab, loadGloVe, load_char_vocab
 from modules import get_token_embeddings, ff, positional_encoding, multihead_attention, ln, noam_scheme
 from matching import match_passage_with_question, localInference
 from tensorflow.python.ops import nn_ops
@@ -16,16 +16,34 @@ class FI:
     def __init__(self, hp):
         self.hp = hp
         self.token2idx, self.idx2token, self.hp.vocab_size = load_vocab(hp.vocab)
+        _, _, self.char_vocab_size = load_char_vocab(hp.char_vocab)
         self.embd = None
         if self.hp.preembedding:
             self.embd = loadGloVe(self.hp.vec_path)
         self.embeddings = get_token_embeddings(self.embd, self.hp.vocab_size, self.hp.d_model, zero_pad=False)
-        self.x = tf.placeholder(tf.int32, [None, None], name="text_x")
-        self.y = tf.placeholder(tf.int32, [None, None], name="text_y")
+        self.x = tf.placeholder(tf.int32, [None, self.hp.maxlen], name="text_x")
+        self.y = tf.placeholder(tf.int32, [None, self.hp.maxlen], name="text_y")
         self.x_len = tf.placeholder(tf.int32, [None])
         self.y_len = tf.placeholder(tf.int32, [None])
         self.truth = tf.placeholder(tf.int32, [None, self.hp.num_class], name="truth")
         self.is_training = tf.placeholder(tf.bool,shape=None, name="is_training")
+
+        if self.hp.char_embedding:
+            ## Char embedding
+            ## shape = (batch_size, max length of sentence, max length of word)
+            self.x_char_ids = tf.placeholder(tf.int32, shape=[None, self.hp.maxlen, self.hp.char_maxlen],
+                            name="x_char_ids")
+
+            ## shape = (batch_size, max_length of sentence)
+            self.x_word_lengths = tf.placeholder(tf.int32, shape=[None, self.hp.maxlen],
+                            name="x_word_lengths")
+            ## shape = (batch_size, max length of sentence, max length of word)
+            self.y_char_ids = tf.placeholder(tf.int32, shape=[None, self.hp.maxlen, self.hp.char_maxlen],
+                            name="y_char_ids")
+
+            ## shape = (batch_size, max_length of sentence)
+            self.y_word_lengths = tf.placeholder(tf.int32, shape=[None, self.hp.maxlen],
+                            name="y_word_lengths")
 
         self.logits = self._logits_op()
         self.loss = self._loss_op()
@@ -45,6 +63,14 @@ class FI:
 
         return feed_dict
 
+    def create_char_feed_dict(self, feed_dict, x_char_ids, x_word_lengths, y_char_ids, y_word_lengths):
+        feed_dict[self.x_char_ids] = x_char_ids
+        feed_dict[self.y_char_ids] = y_char_ids
+        feed_dict[self.x_word_lengths] = x_word_lengths
+        feed_dict[self.y_word_lengths] = y_word_lengths
+
+        return feed_dict
+
     def create_feed_dict_infer(self, x, y, x_len, y_len):
         feed_dict = {
             self.x: x,
@@ -55,6 +81,86 @@ class FI:
 
         return feed_dict
 
+    def my_lstm_layer(self, input_reps, lstm_dim, input_lengths=None, scope_name=None, reuse=False, is_training=True,
+                      dropout_rate=0.2):
+        with tf.variable_scope(scope_name, reuse=reuse):
+            context_lstm_cell_fw = tf.nn.rnn_cell.LSTMCell(lstm_dim)
+            context_lstm_cell_bw = tf.nn.rnn_cell.LSTMCell(lstm_dim)
+            '''
+            if is_training is not None:
+                context_lstm_cell_fw = tf.nn.rnn_cell.DropoutWrapper(context_lstm_cell_fw,
+                                                                     output_keep_prob=(1 - dropout_rate))
+                context_lstm_cell_bw = tf.nn.rnn_cell.DropoutWrapper(context_lstm_cell_bw,
+                                                                     output_keep_prob=(1 - dropout_rate))
+            '''
+            #context_lstm_cell_fw = tf.nn.rnn_cell.MultiRNNCell([context_lstm_cell_fw])
+            #context_lstm_cell_bw = tf.nn.rnn_cell.MultiRNNCell([context_lstm_cell_bw])
+
+            (f_rep, b_rep), _ = tf.nn.bidirectional_dynamic_rnn(
+                context_lstm_cell_fw, context_lstm_cell_bw, input_reps, dtype=tf.float32,
+                sequence_length=input_lengths)  # [batch_size, question_len, context_lstm_dim]
+            outputs = tf.concat(axis=2, values=[f_rep, b_rep])
+        return (f_rep, b_rep, outputs)
+
+    def collect_final_step_of_lstm(self, lstm_representation, lengths):
+        # lstm_representation: [batch_size, passsage_length, dim]
+        # lengths: [batch_size]
+        lengths = tf.maximum(lengths, tf.zeros_like(lengths, dtype=tf.int32))
+
+        batch_size = tf.shape(lengths)[0]
+        batch_nums = tf.range(0, limit=batch_size)  # shape (batch_size)
+        indices = tf.stack((batch_nums, lengths), axis=1)  # shape (batch_size, 2)
+        result = tf.gather_nd(lstm_representation, indices, name='last-forwar-lstm')
+        return result  # [batch_size, dim]
+
+    def _char_embedding(self):
+        with tf.variable_scope("chars", reuse=tf.AUTO_REUSE):
+            # get embeddings matrix
+            _char_embeddings = tf.get_variable(name="_char_embeddings", dtype=tf.float32,
+                shape=[self.char_vocab_size, self.hp.char_dim])
+
+            x_char_embeddings = tf.nn.embedding_lookup(_char_embeddings, self.x_char_ids,
+                name="x_char_embeddings")
+            y_char_embeddings = tf.nn.embedding_lookup(_char_embeddings, self.y_char_ids,
+                                                       name="y_char_embeddings")
+            # put the time dimension on axis=1
+            s_x = tf.shape(x_char_embeddings)
+            s_y = tf.shape(y_char_embeddings)
+            x_char_embeddings = tf.reshape(x_char_embeddings, shape=[-1, s_x[-2], self.hp.char_dim])
+            y_char_embeddings = tf.reshape(y_char_embeddings, shape=[-1, s_y[-2], self.hp.char_dim])
+            x_lengths = tf.reshape(self.x_word_lengths, shape=[-1])
+            y_lengths = tf.reshape(self.y_word_lengths, shape=[-1])
+            x_char_mask = tf.sequence_mask(x_lengths, s_x[2], dtype=tf.float32)  # [batch_size*question_len, q_char_len]
+            x_char_embeddings = tf.multiply(x_char_embeddings, tf.expand_dims(x_char_mask, axis=-1))
+            y_char_mask = tf.sequence_mask(y_lengths, s_y[2], dtype=tf.float32)  # [batch_size*question_len, q_char_len]
+            y_char_embeddings = tf.multiply(y_char_embeddings, tf.expand_dims(y_char_mask, axis=-1))
+
+            # bi lstm on chars
+            # need 2 instances of cells since tf 1.1
+            (x_char_fw, x_char_bw, _) = self.my_lstm_layer(x_char_embeddings, self.hp.char_lstm_dim, input_lengths=x_lengths,
+                                                    scope_name="char_lstm", reuse=tf.AUTO_REUSE, is_training=self.is_training,
+                                                    dropout_rate=self.hp.dropout_rate)
+            (y_char_fw, y_char_bw, _) = self.my_lstm_layer(y_char_embeddings, self.hp.char_lstm_dim, input_lengths=y_lengths,
+                                                    scope_name="char_lstm", reuse=tf.AUTO_REUSE, is_training=self.is_training,
+                                                    dropout_rate=self.hp.dropout_rate)
+
+            x_char_fw = self.collect_final_step_of_lstm(x_char_fw, x_lengths-1)
+            x_char_bw = x_char_bw[:, 0, :]
+            y_char_fw = self.collect_final_step_of_lstm(y_char_fw, y_lengths-1)
+            y_char_bw = y_char_bw[:, 0, :]
+
+            x_char_output = tf.concat(axis=1, values=[x_char_fw, x_char_bw])
+            y_char_output = tf.concat(axis=1, values=[y_char_fw, y_char_bw])
+
+            # shape = (batch size, max sentence length, char hidden size)
+            self.ppp = tf.print(["x_char_output"], x_char_output.shape)
+            x_char_output = tf.reshape(x_char_output, shape=[self.hp.batch_size, s_x[1], 2 * self.hp.char_lstm_dim])
+
+            y_char_output = tf.reshape(y_char_output, shape=[self.hp.batch_size, s_y[1], 2 * self.hp.char_lstm_dim])
+            print(x_char_output.shape)
+            print(x_char_output.shape)
+            return x_char_output, y_char_output
+
     def representation(self, xs, ys):
         with tf.variable_scope("representation", reuse=tf.AUTO_REUSE):
             x = xs
@@ -64,16 +170,20 @@ class FI:
             # print(y)
 
             # embedding
+            x_char_emb, y_char_emb = self._char_embedding()
+
             encx = tf.nn.embedding_lookup(self.embeddings, x)  # (N, T1, d_model)
             encx *= self.hp.d_model ** 0.5  # scale
 
             encx += positional_encoding(encx, self.hp.maxlen)
+            encx = tf.concat([encx, x_char_emb], axis=-1)
             encx = tf.layers.dropout(encx, self.hp.dropout_rate, training=self.is_training)
 
             ency = tf.nn.embedding_lookup(self.embeddings, y)  # (N, T1, d_model)
             ency *= self.hp.d_model ** 0.5  # scale
 
             ency += positional_encoding(ency, self.hp.maxlen)
+            ency = tf.concat([ency, y_char_emb], axis=-1)
             ency = tf.layers.dropout(ency, self.hp.dropout_rate, training=self.is_training)
 
             # add ln
@@ -84,6 +194,9 @@ class FI:
             # Inter Inference Block
             for i in range(self.hp.num_inter_blocks):
                 encx, ency = self.inter_blocks(encx, ency, scope="num_inter_blocks_{}".format(i))
+
+            #print(encx.shape)
+            #print(ency.shape)
 
             # Inference Block
             for i in range(self.hp.inference_blocks):
@@ -97,6 +210,7 @@ class FI:
     def inference_blocks(self, a_repre, b_repre, scope, reuse=tf.AUTO_REUSE):
         with tf.variable_scope(scope, reuse=reuse):
             # self-attention
+            dim = a_repre.shape.as_list()[-1]
             encx = multihead_attention(queries=a_repre,
                                        keys=a_repre,
                                        values=a_repre,
@@ -116,8 +230,8 @@ class FI:
 
             encx, ency = self._infer(encx, ency)
             # feed forward
-            encx = ff(encx, num_units=[self.hp.d_ff, self.hp.d_model])
-            ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
+            encx = ff(encx, num_units=[self.hp.d_ff, dim])
+            ency = ff(ency, num_units=[self.hp.d_ff, dim])
 
             #先进行infer然后再过全连接
             #encx = ff(encx, num_units=[self.hp.d_ff, self.hp.d_model])
@@ -193,7 +307,7 @@ class FI:
             # match_result_x = match_passage_with_question(encx, ency, x_mask, y_mask)
             # match_result_y = match_passage_with_question(ency, encx, x_mask, y_mask)
 
-            attentionWeights = self.calcuate_attention(encx, ency, self.hp.d_model, self.hp.d_model,
+            attentionWeights = self.calcuate_attention(encx, ency, self.hp.d_model+self.hp.char_lstm_dim*2, self.hp.d_model+self.hp.char_lstm_dim*2,
                                               scope_name="attention", att_type=self.hp.att_type, att_dim=self.hp.att_dim,
                                               remove_diagnoal=False, mask1=x_mask, mask2=y_mask)
 
@@ -229,8 +343,9 @@ class FI:
         return a_res, b_res
 
     def _project_op(self, inputx):
+        #dim = inputx.shape.as_list()[-1]
         with tf.variable_scope("projection", reuse=tf.AUTO_REUSE):
-            inputx = tf.layers.dense(inputx, self.hp.d_model,
+            inputx = tf.layers.dense(inputx, self.hp.d_model+self.hp.char_lstm_dim*2,
                                      activation=tf.nn.relu,
                                      name='fnn',
                                      kernel_initializer=tf.truncated_normal_initializer(stddev=0.02))
@@ -254,6 +369,7 @@ class FI:
     def inter_blocks(self, a_repre, b_repre, scope, reuse=tf.AUTO_REUSE):
         with tf.variable_scope(scope, reuse=reuse):
             # self-attention
+            dim = a_repre.shape.as_list()[-1]
             encx = multihead_attention(queries=b_repre,
                                        keys=a_repre,
                                        values=a_repre,
@@ -262,7 +378,7 @@ class FI:
                                        training=self.is_training,
                                        causality=False)
             # feed forward
-            encx = ff(encx, num_units=[self.hp.d_ff, self.hp.d_model])
+            encx = ff(encx, num_units=[self.hp.d_ff, dim])
 
             # self-attention
             ency = multihead_attention(queries=a_repre,
@@ -273,8 +389,9 @@ class FI:
                                        training=self.is_training,
                                        causality=False)
             # feed forward
-            ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
-
+            ency = ff(ency, num_units=[self.hp.d_ff, dim])
+            #print(encx.shape)
+            #print(ency.shape)
             encx, ency = self._infer(encx, ency)
 
         return encx, ency

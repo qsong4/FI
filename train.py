@@ -16,8 +16,11 @@ def evaluate(sess, eval_init_op, num_eval_batches):
     total_acc = 0.0
     total_loss = 0.0
     for i in range(total_steps + 1):
-        x, y, x_len, y_len, labels = sess.run(data_element)
+        x, y, x_len, y_len, char_x, char_y, char_x_len, char_y_len, labels = sess.run(data_element)
         feed_dict = m.create_feed_dict(x, y, x_len, y_len, labels, False)
+        if hp.char_embedding:
+            feed_dict = m.create_char_feed_dict(feed_dict, char_x, char_x_len, char_y, char_y_len)
+
         #dev_acc, dev_loss = sess.run([dev_accuracy_op, dev_loss_op])
         dev_acc, dev_loss = sess.run([m.acc, m.loss], feed_dict=feed_dict)
         #print("xxx", dev_loss)
@@ -32,9 +35,15 @@ hp = parser.parse_args()
 
 print("# Prepare train/eval batches")
 train_batches, num_train_batches, num_train_samples = get_batch(hp.train, hp.maxlen,
-                                                                hp.vocab, hp.batch_size, shuffle=True)
+                                                                hp.vocab, hp.batch_size, shuffle=True,
+                                                                with_char=hp.char_embedding,
+                                                                char_maxlen=hp.char_maxlen,
+                                                                char_vocab_fpath=hp.char_vocab)
 eval_batches, num_eval_batches, num_eval_samples = get_batch(hp.eval, hp.maxlen,
-                                                             hp.vocab, hp.batch_size,shuffle=False)
+                                                             hp.vocab, hp.batch_size,shuffle=False,
+                                                             with_char=hp.char_embedding,
+                                                             char_maxlen=hp.char_maxlen,
+                                                             char_vocab_fpath=hp.char_vocab)
 
 # create a iterator of the correct shape and type
 iter = tf.data.Iterator.from_structure(train_batches.output_types, train_batches.output_shapes)
@@ -71,8 +80,10 @@ with tf.Session() as sess:
     total_batch = 0
     tolerant = 0
     for i in tqdm(range(_gs, total_steps+1)):
-        x, y, x_len, y_len, labels = sess.run(data_element)
+        x, y, x_len, y_len, char_x, char_y, char_x_len, char_y_len, labels = sess.run(data_element)
         feed_dict = m.create_feed_dict(x, y, x_len, y_len, labels, True)
+        if hp.char_embedding:
+            feed_dict = m.create_char_feed_dict(feed_dict, char_x, char_x_len, char_y, char_y_len)
         _, _loss, _accuracy, _gs = sess.run([m.train, m.loss, m.acc, m.global_step], feed_dict=feed_dict)
         total_loss += _loss
         total_acc += _accuracy

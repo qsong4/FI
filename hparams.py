@@ -20,6 +20,8 @@ class Hparams:
     ## vocabulary
     parser.add_argument('--vocab', default='./data/snli.vocab',
                         help="vocabulary file path")
+    parser.add_argument('--char_vocab', default='./data/snli.char.vocab',
+                        help="vocabulary file path")
 
     # training scheme
     parser.add_argument('--batch_size', default=128, type=int)
@@ -27,6 +29,8 @@ class Hparams:
     parser.add_argument('--preembedding', default=False, type=bool) #本地测试使用
     #parser.add_argument('--preembedding', default=True, type=bool) #实际训练使用
     parser.add_argument('--early_stop', default=20, type=int)
+    parser.add_argument('--char_embedding', default=True, type=bool)
+    parser.add_argument('--char_dim', default=20, type=int)
 
     #learning rate 0.0003 is too high
     parser.add_argument('--lr', default=0.0001, type=float, help="learning rate")
@@ -67,10 +71,14 @@ class Hparams:
                         help="number of inter blocks")
     parser.add_argument('--num_agg_blocks', default=3, type=int,
                         help="number of agg blocks")
-    parser.add_argument('--num_heads', default=6, type=int,
+    parser.add_argument('--num_heads', default=8, type=int,
                         help="number of attention heads")
     parser.add_argument('--maxlen', default=50, type=int,
                         help="maximum length of a source sequence")
+    parser.add_argument('--char_maxlen', default=10, type=int,
+                        help="maximum length of a word")
+    parser.add_argument('--char_lstm_dim', default=50, type=int,
+                        help="maximum length of a word")
     parser.add_argument('--num_class', default=3, type=int,
                         help="number of class")
     parser.add_argument('--dropout_rate', default=0.1, type=float)
