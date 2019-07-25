@@ -27,7 +27,7 @@ class FI:
         self.truth = tf.placeholder(tf.int32, [None, self.hp.num_class], name="truth")
         self.is_training = tf.placeholder(tf.bool,shape=None, name="is_training")
 
-        self.logits = self._logits_op()
+        self.logits, self.ae_loss = self._logits_op()
         self.loss = self._loss_op()
         self.acc = self._acc_op()
         self.global_step = self._globalStep_op()
@@ -91,15 +91,18 @@ class FI:
             x_layer.append(encx)
             y_layer.append(ency)
 
+            ae_loss_total = 0
+
             # Inference Block
             for i in range(self.hp.inference_blocks):
                 #encx, ency = self.inference_blocks(encx, ency, scope="num_inference_blocks_{}".format(i))
-                encx, ency = self.dense_blocks(encx, ency, x_layer, y_layer, scope="num_inference_blocks_{}".format(i))
+                encx, ency, ae_loss = self.dense_blocks(encx, ency, x_layer, y_layer, scope="num_inference_blocks_{}".format(i))
                 x_layer.append(encx)
                 y_layer.append(ency)
+                ae_loss_total += ae_loss
 
         # return x_layer, y_layer
-        return encx, ency
+        return encx, ency, ae_loss_total/self.hp.inference_blocks
 
     def dense_blocks(self, a_repre, b_repre, x_layer, y_layer, scope, reuse=tf.AUTO_REUSE):
         with tf.variable_scope(scope, reuse=reuse):
@@ -121,13 +124,13 @@ class FI:
                                        training=self.is_training,
                                        causality=False)
 
-            encx, ency = self._dense_infer(encx, ency, x_layer, y_layer)
+            encx, ency, ae_loss = self._dense_infer(encx, ency, x_layer, y_layer)
 
             # feed forward
             encx = ff(encx, num_units=[self.hp.d_ff, self.hp.d_model])
             ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
 
-            return encx, ency
+            return encx, ency, ae_loss
 
     def inference_blocks(self, a_repre, b_repre, scope, reuse=tf.AUTO_REUSE):
         with tf.variable_scope(scope, reuse=reuse):
@@ -233,10 +236,12 @@ class FI:
             print("a_res shape:", a_res.shape)
             print("b_res shape:", b_res.shape)
 
-            a_res = self._project_op(a_res)  # (?,?,d_model)
-            b_res = self._project_op(b_res)  # (?,?,d_model)
+            # a_res = self._project_op(a_res)  # (?,?,d_model)
+            # b_res = self._project_op(b_res)  # (?,?,d_model)
+            a_res, ae_loss_a = self._AutoEncoder(a_res)
+            b_res, ae_loss_b = self._AutoEncoder(b_res)
 
-        return a_res, b_res
+        return a_res, b_res, ae_loss_a+ ae_loss_b
 
 
 
@@ -291,6 +296,38 @@ class FI:
                                      kernel_initializer=tf.truncated_normal_initializer(stddev=0.02))
 
             return inputx
+
+    def _AutoEncoder(self, inputx):
+        with tf.variable_scope("AE", reuse=tf.AUTO_REUSE):
+            # # Network variables
+            # encoder_weights = tf.Variable(tf.random_normal(shape=(self.features.shape[1], n_dimensions)))
+            # encoder_bias = tf.Variable(tf.zeros(shape=[n_dimensions]))
+            #
+            # decoder_weights = tf.Variable(tf.random_normal(shape=(n_dimensions, self.features.shape[1])))
+            # decoder_bias = tf.Variable(tf.zeros(shape=[self.features.shape[1]]))
+            #
+            # # Encoder part
+            # encoding = tf.nn.sigmoid(tf.add(tf.matmul(X, encoder_weights), encoder_bias))
+            #
+            # # Decoder part
+            # predicted_x = tf.nn.sigmoid(tf.add(tf.matmul(encoding, decoder_weights), decoder_bias))
+            dim = inputx.shape.as_list()[-1]
+            encoder_result = tf.layers.dense(inputx, self.hp.d_model,
+                                     activation=tf.nn.relu,
+                                     name='ae_encoder',
+                                     kernel_initializer=tf.truncated_normal_initializer(stddev=0.02))
+
+            decoder_result = tf.layers.dense(inputx, dim,
+                                     activation=tf.nn.relu,
+                                     name='ae_decoder',
+                                     kernel_initializer=tf.truncated_normal_initializer(stddev=0.02))
+
+            # Define the cost function and optimizer to minimize squared error
+            ae_loss = tf.reduce_mean(tf.pow(tf.subtract(decoder_result, inputx), 2))
+
+            return encoder_result, ae_loss
+            #optimizer = tf.train.AdamOptimizer().minimize(cost)
+
 
     def base_blocks(self, a_repre, scope, reuse=tf.AUTO_REUSE):
         with tf.variable_scope(scope, reuse=reuse):
@@ -416,7 +453,7 @@ class FI:
 
     def _logits_op(self):
         # representation
-        x_repre, y_repre = self.representation(self.x, self.y)  # (layers, batchsize, maxlen, d_model)
+        x_repre, y_repre, ae_loss = self.representation(self.x, self.y)  # (layers, batchsize, maxlen, d_model)
 
         # BN
         x_repre = tf.layers.batch_normalization(x_repre, training=self.is_training, name='bn1', reuse=tf.AUTO_REUSE)
@@ -432,13 +469,15 @@ class FI:
         max_y = tf.reduce_max(y_repre, axis=1)
         agg_res = tf.concat([avg_x, avg_y, max_x, max_y], axis=1)
         logits = self.fc(agg_res, match_dim=agg_res.shape.as_list()[-1])
-        return logits
+        return logits, ae_loss
 
     def _loss_op(self, l2_lambda=0.0001):
         loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.logits, labels=self.truth))
         weights = [v for v in tf.trainable_variables() if ('w' in v.name) or ('kernel') in v.name]
         l2_loss = tf.add_n([tf.nn.l2_loss(w) for w in weights]) * l2_lambda
         loss += l2_loss
+        #添加aeloss
+        loss += self.ae_loss
         return loss
 
     def _acc_op(self):
