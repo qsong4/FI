@@ -15,6 +15,7 @@ class FI:
 
     def __init__(self, hp):
         self.hp = hp
+        self.AE_layer = list(map(int, self.hp.ae_layer.split(",")))
         self.token2idx, self.idx2token, self.hp.vocab_size = load_vocab(hp.vocab)
         self.embd = None
         if self.hp.preembedding:
@@ -96,15 +97,15 @@ class FI:
             # Inference Block
             for i in range(self.hp.inference_blocks):
                 #encx, ency = self.inference_blocks(encx, ency, scope="num_inference_blocks_{}".format(i))
-                encx, ency, ae_loss = self.dense_blocks(encx, ency, x_layer, y_layer, scope="num_inference_blocks_{}".format(i))
+                encx, ency, ae_loss = self.dense_blocks(encx, ency, x_layer, y_layer, i, scope="num_inference_blocks_{}".format(i))
                 x_layer.append(encx)
                 y_layer.append(ency)
                 ae_loss_total += ae_loss
 
         # return x_layer, y_layer
-        return encx, ency, ae_loss_total/self.hp.inference_blocks
+        return encx, ency, ae_loss_total/2*len(self.AE_layer)
 
-    def dense_blocks(self, a_repre, b_repre, x_layer, y_layer, scope, reuse=tf.AUTO_REUSE):
+    def dense_blocks(self, a_repre, b_repre, x_layer, y_layer, layer_num, scope, reuse=tf.AUTO_REUSE):
         with tf.variable_scope(scope, reuse=reuse):
             # self-attention
             encx = multihead_attention(queries=a_repre,
@@ -124,11 +125,13 @@ class FI:
                                        training=self.is_training,
                                        causality=False)
 
-            encx, ency, ae_loss = self._dense_infer(encx, ency, x_layer, y_layer)
-
             # feed forward
-            encx = ff(encx, num_units=[self.hp.d_ff, self.hp.d_model])
-            ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
+            encx = ff(encx, num_units=[self.hp.d_ff, encx.shape.as_list()[-1]])
+            ency = ff(ency, num_units=[self.hp.d_ff, ency.shape.as_list()[-1]])
+
+            encx, ency, ae_loss = self._dense_infer(encx, ency, x_layer, y_layer, layer_num)
+
+
 
             return encx, ency, ae_loss
 
@@ -224,26 +227,76 @@ class FI:
 
         return atten_value
 
-    def _dense_infer(self, encx, ency, x_layer, y_layer, scope="dese_local_inference"):
+    def cross_attention(self, a_repre, b_repre, scope, reuse=tf.AUTO_REUSE):
+        with tf.variable_scope(scope, reuse=reuse):
+            # self-attention
+            encx = multihead_attention(queries=b_repre,
+                                       keys=a_repre,
+                                       values=a_repre,
+                                       num_heads=self.hp.num_heads,
+                                       dropout_rate=self.hp.dropout_rate,
+                                       training=self.is_training,
+                                       causality=False)
+            # feed forward
+            encx = ff(encx, num_units=[self.hp.d_ff, encx.shape.as_list()[-1]])
+
+            # self-attention
+            ency = multihead_attention(queries=a_repre,
+                                       keys=b_repre,
+                                       values=b_repre,
+                                       num_heads=self.hp.num_heads,
+                                       dropout_rate=self.hp.dropout_rate,
+                                       training=self.is_training,
+                                       causality=False)
+            # feed forward
+            ency = ff(ency, num_units=[self.hp.d_ff, encx.shape.as_list()[-1]])
+
+        return encx, ency
+
+    def calculate_att(self, encx, ency, scope):
         with tf.variable_scope(scope):
             x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
             y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
+            # match_result_x = match_passage_with_question(encx, ency, x_mask, y_mask)
+            # match_result_y = match_passage_with_question(ency, encx, x_mask, y_mask)
 
-            attentionWeights = calculate_rele(encx, ency, x_mask, y_mask)
+            attentionWeights = self.calcuate_attention(encx, ency, self.hp.att_dim, self.hp.att_dim,
+                                              scope_name="attention", att_type=self.hp.att_type, att_dim=self.hp.att_dim,
+                                              remove_diagnoal=False, mask1=x_mask, mask2=y_mask)
+            #attentionWeights = tf.matmul(encx, tf.transpose(ency, [0, 2, 1]))
+            attentionSoft_a = tf.nn.softmax(attentionWeights)
+            attentionSoft_b = tf.nn.softmax(tf.transpose(attentionWeights))
+            attentionSoft_b = tf.transpose(attentionSoft_b)
+            #print(attentionSoft_a.shape)
+            #a_hat = tf.matmul(attentionSoft_a, ency)
+            #b_hat = tf.matmul(attentionSoft_b, encx)
+        return attentionSoft_a, attentionSoft_b
 
-            a_res = tf.concat(x_layer + [encx, attentionWeights], axis=2)
-            b_res = tf.concat(y_layer + [ency, attentionWeights], axis=2)
+    def _dense_infer(self, encx, ency, x_layer, y_layer, layer_num, scope="dese_local_inference"):
+        with tf.variable_scope(scope):
+            #x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
+            #y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
+
+            cross_encx, cross_ency = self.calculate_att(encx, ency, scope="cal_att")
+            print(cross_encx.shape)
+            print(cross_ency.shape)
+            #可以有两种方式
+            #1. concat前面所有层的信息
+            #2. 只concat前面一层的信息
+            a_res = tf.concat([x_layer[-1]] + [encx, cross_encx], axis=2)
+            b_res = tf.concat([y_layer[-1]] + [ency, cross_ency], axis=2)
             print("a_res shape:", a_res.shape)
             print("b_res shape:", b_res.shape)
 
             # a_res = self._project_op(a_res)  # (?,?,d_model)
             # b_res = self._project_op(b_res)  # (?,?,d_model)
-            a_res, ae_loss_a = self._AutoEncoder(a_res)
-            b_res, ae_loss_b = self._AutoEncoder(b_res)
+            ae_loss_a = 0
+            ae_loss_b = 0
+            if layer_num in self.AE_layer:
+                a_res, ae_loss_a = self._AutoEncoder(a_res)
+                b_res, ae_loss_b = self._AutoEncoder(b_res)
 
-        return a_res, b_res, ae_loss_a+ ae_loss_b
-
-
+        return a_res, b_res, ae_loss_a + ae_loss_b
 
 
     def _infer(self, encx, ency, scope="local_inference"):
@@ -460,14 +513,17 @@ class FI:
         y_repre = tf.layers.batch_normalization(y_repre, training=self.is_training, name='bn2', reuse=tf.AUTO_REUSE)
 
         # aggre
-        x_repre = self.aggregation(x_repre, x_repre)
-        y_repre = self.aggregation(y_repre, y_repre)
+        #x_repre = self.aggregation(x_repre, x_repre)
+        #y_repre = self.aggregation(y_repre, y_repre)
 
-        avg_x = tf.reduce_mean(x_repre, axis=1)
+        #avg_x = tf.reduce_mean(x_repre, axis=1)
         max_x = tf.reduce_max(x_repre, axis=1)
-        avg_y = tf.reduce_mean(y_repre, axis=1)
+        #avg_y = tf.reduce_mean(y_repre, axis=1)
         max_y = tf.reduce_max(y_repre, axis=1)
-        agg_res = tf.concat([avg_x, avg_y, max_x, max_y], axis=1)
+        substract_xy = tf.subtract(max_x, max_y)
+        add_xy = tf.add(max_x, max_y)
+        agg_res = tf.concat([max_x, max_y, substract_xy, add_xy], axis=1)
+        print(agg_res.shape)
         logits = self.fc(agg_res, match_dim=agg_res.shape.as_list()[-1])
         return logits, ae_loss
 

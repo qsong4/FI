@@ -21,6 +21,9 @@ class Hparams:
     parser.add_argument('--vocab', default='./data/snli.vocab',
                         help="vocabulary file path")
 
+    #AE
+    parser.add_argument('--ae_layer', default='2,4')
+
     # training scheme
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--eval_batch_size', default=128, type=int)
@@ -61,13 +64,13 @@ class Hparams:
                         help="hidden dimension of feedforward layer")
     parser.add_argument('--num_extract_blocks', default=3, type=int,
                         help="number of extract blocks")
-    parser.add_argument('--inference_blocks', default=3, type=int,
+    parser.add_argument('--inference_blocks', default=5, type=int,
                         help="number of inference_blocks")
     parser.add_argument('--num_inter_blocks', default=3, type=int,
                         help="number of inter blocks")
     parser.add_argument('--num_agg_blocks', default=3, type=int,
                         help="number of agg blocks")
-    parser.add_argument('--num_heads', default=6, type=int,
+    parser.add_argument('--num_heads', default=5, type=int,
                         help="number of attention heads")
     parser.add_argument('--maxlen', default=50, type=int,
                         help="maximum length of a source sequence")
