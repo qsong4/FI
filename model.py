@@ -125,6 +125,24 @@ class FI:
                                        training=self.is_training,
                                        causality=False)
 
+            # self-attention
+            encx = multihead_attention(queries=encx,
+                                       keys=ency,
+                                       values=ency,
+                                       num_heads=self.hp.num_heads,
+                                       dropout_rate=self.hp.dropout_rate,
+                                       training=self.is_training,
+                                       causality=False)
+
+            # self-attention
+            ency = multihead_attention(queries=ency,
+                                       keys=encx,
+                                       values=encx,
+                                       num_heads=self.hp.num_heads,
+                                       dropout_rate=self.hp.dropout_rate,
+                                       training=self.is_training,
+                                       causality=False)
+
             # feed forward
             encx = ff(encx, num_units=[self.hp.d_ff, encx.shape.as_list()[-1]])
             ency = ff(ency, num_units=[self.hp.d_ff, ency.shape.as_list()[-1]])
@@ -260,7 +278,7 @@ class FI:
             # match_result_x = match_passage_with_question(encx, ency, x_mask, y_mask)
             # match_result_y = match_passage_with_question(ency, encx, x_mask, y_mask)
 
-            attentionWeights = self.calcuate_attention(encx, ency, self.hp.att_dim, self.hp.att_dim,
+            attentionWeights = self.calcuate_attention(encx, ency, encx.shape.as_list()[-1], ency.shape.as_list()[-1],
                                               scope_name="attention", att_type=self.hp.att_type, att_dim=self.hp.att_dim,
                                               remove_diagnoal=False, mask1=x_mask, mask2=y_mask)
             #attentionWeights = tf.matmul(encx, tf.transpose(ency, [0, 2, 1]))
@@ -277,16 +295,16 @@ class FI:
             #x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
             #y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
 
-            cross_encx, cross_ency = self.calculate_att(encx, ency, scope="cal_att")
-            print(cross_encx.shape)
-            print(cross_ency.shape)
+            #cross_encx, cross_ency = self.calculate_att(encx, ency, scope="cal_att")
+            #print(cross_encx.shape)
+            #print(cross_ency.shape)
             #可以有两种方式
             #1. concat前面所有层的信息
             #2. 只concat前面一层的信息
-            a_res = tf.concat([x_layer[-1]] + [encx, cross_encx], axis=2)
-            b_res = tf.concat([y_layer[-1]] + [ency, cross_ency], axis=2)
-            print("a_res shape:", a_res.shape)
-            print("b_res shape:", b_res.shape)
+            a_res = tf.concat([x_layer[-1]] + [encx], axis=2)
+            b_res = tf.concat([y_layer[-1]] + [ency], axis=2)
+            #print("a_res shape:", a_res.shape)
+            #print("b_res shape:", b_res.shape)
 
             # a_res = self._project_op(a_res)  # (?,?,d_model)
             # b_res = self._project_op(b_res)  # (?,?,d_model)
@@ -523,7 +541,6 @@ class FI:
         substract_xy = tf.subtract(max_x, max_y)
         add_xy = tf.add(max_x, max_y)
         agg_res = tf.concat([max_x, max_y, substract_xy, add_xy], axis=1)
-        print(agg_res.shape)
         logits = self.fc(agg_res, match_dim=agg_res.shape.as_list()[-1])
         return logits, ae_loss
 
