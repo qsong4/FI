@@ -108,7 +108,7 @@ class FI:
     def dense_blocks(self, a_repre, b_repre, x_layer, y_layer, layer_num, scope, reuse=tf.AUTO_REUSE):
         with tf.variable_scope(scope, reuse=reuse):
             # self-attention
-            encx = multihead_attention(queries=a_repre,
+            _encx = multihead_attention(queries=a_repre,
                                        keys=a_repre,
                                        values=a_repre,
                                        num_heads=self.hp.num_heads,
@@ -117,7 +117,7 @@ class FI:
                                        causality=False)
 
             # self-attention
-            ency = multihead_attention(queries=b_repre,
+            _ency = multihead_attention(queries=b_repre,
                                        keys=b_repre,
                                        values=b_repre,
                                        num_heads=self.hp.num_heads,
@@ -126,18 +126,18 @@ class FI:
                                        causality=False)
 
             # self-attention
-            encx = multihead_attention(queries=encx,
-                                       keys=ency,
-                                       values=ency,
+            ency = multihead_attention(queries=_encx,
+                                       keys=_ency,
+                                       values=_ency,
                                        num_heads=self.hp.num_heads,
                                        dropout_rate=self.hp.dropout_rate,
                                        training=self.is_training,
                                        causality=False)
 
             # self-attention
-            ency = multihead_attention(queries=ency,
-                                       keys=encx,
-                                       values=encx,
+            encx = multihead_attention(queries=_ency,
+                                       keys=_encx,
+                                       values=_encx,
                                        num_heads=self.hp.num_heads,
                                        dropout_rate=self.hp.dropout_rate,
                                        training=self.is_training,
@@ -266,6 +266,9 @@ class FI:
                                        dropout_rate=self.hp.dropout_rate,
                                        training=self.is_training,
                                        causality=False)
+
+            encx, ency = self._infer(encx, ency)
+
             # feed forward
             ency = ff(ency, num_units=[self.hp.d_ff, encx.shape.as_list()[-1]])
 
@@ -296,15 +299,16 @@ class FI:
             #y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
 
             #cross_encx, cross_ency = self.calculate_att(encx, ency, scope="cal_att")
+            _encx, _ency = self._infer(encx, ency)
             #print(cross_encx.shape)
             #print(cross_ency.shape)
             #可以有两种方式
             #1. concat前面所有层的信息
             #2. 只concat前面一层的信息
-            a_res = tf.concat([x_layer[-1]] + [encx], axis=2)
-            b_res = tf.concat([y_layer[-1]] + [ency], axis=2)
-            #print("a_res shape:", a_res.shape)
-            #print("b_res shape:", b_res.shape)
+            a_res = tf.concat([x_layer[-1]] + [encx, _encx], axis=2)
+            b_res = tf.concat([y_layer[-1]] + [ency, _ency], axis=2)
+            print("a_res shape:", a_res.shape)
+            print("b_res shape:", b_res.shape)
 
             # a_res = self._project_op(a_res)  # (?,?,d_model)
             # b_res = self._project_op(b_res)  # (?,?,d_model)
@@ -324,25 +328,24 @@ class FI:
             # match_result_x = match_passage_with_question(encx, ency, x_mask, y_mask)
             # match_result_y = match_passage_with_question(ency, encx, x_mask, y_mask)
 
-            attentionWeights = self.calcuate_attention(encx, ency, self.hp.d_model, self.hp.d_model,
-                                              scope_name="attention", att_type=self.hp.att_type, att_dim=self.hp.att_dim,
-                                              remove_diagnoal=False, mask1=x_mask, mask2=y_mask)
+            # attentionWeights = self.calcuate_attention(encx, ency, self.hp.d_model, self.hp.d_model,
+            #                                   scope_name="attention", att_type=self.hp.att_type, att_dim=self.hp.att_dim,
+            #                                   remove_diagnoal=False, mask1=x_mask, mask2=y_mask)
 
-            #attentionWeights = tf.matmul(encx, tf.transpose(ency, [0, 2, 1]))
+            attentionWeights = tf.matmul(encx, tf.transpose(ency, [0, 2, 1]))
             attentionSoft_a = tf.nn.softmax(attentionWeights)
             attentionSoft_b = tf.nn.softmax(tf.transpose(attentionWeights))
             attentionSoft_b = tf.transpose(attentionSoft_b)
 
             a_hat = tf.matmul(attentionSoft_a, ency)
             b_hat = tf.matmul(attentionSoft_b, encx)
+            # a_diff = tf.subtract(encx, a_hat)
+            # a_mul = tf.multiply(encx, a_hat)
+            # b_diff = tf.subtract(ency, b_hat)
+            # b_mul = tf.multiply(ency, b_hat)
 
-            a_diff = tf.subtract(encx, a_hat)
-            a_mul = tf.multiply(encx, a_hat)
-            b_diff = tf.subtract(ency, b_hat)
-            b_mul = tf.multiply(ency, b_hat)
-
-            a_res = tf.concat([a_hat, a_diff, a_mul], axis=2)
-            b_res = tf.concat([b_hat, b_diff, b_mul], axis=2)
+            a_res = tf.concat([encx, a_hat], axis=2)
+            b_res = tf.concat([ency, b_hat], axis=2)
 
             # BN
             # a_res = tf.layers.batch_normalization(a_res, training=self.is_training, name='bn1', reuse=tf.AUTO_REUSE)
@@ -351,8 +354,8 @@ class FI:
             a_res = self._project_op(a_res)  # (?,?,d_model)
             b_res = self._project_op(b_res)  # (?,?,d_model)
 
-            a_res += encx
-            b_res += ency
+            # a_res += encx
+            # b_res += ency
 
             a_res = ln(a_res)
             b_res = ln(b_res)

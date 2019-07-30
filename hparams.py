@@ -22,7 +22,7 @@ class Hparams:
                         help="vocabulary file path")
 
     #AE
-    parser.add_argument('--ae_layer', default='2,4')
+    parser.add_argument('--ae_layer', default='0,1,2,3,4')
 
     # training scheme
     parser.add_argument('--batch_size', default=128, type=int)
