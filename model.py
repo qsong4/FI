@@ -83,8 +83,11 @@ class FI:
 
             # 这两个模块可以互换
             # Inter Inference Block
-            # for i in range(self.hp.num_inter_blocks):
-            #     encx, ency = self.inter_blocks(encx, ency, scope="num_inter_blocks_{}".format(i))
+            for i in range(self.hp.num_inter_blocks):
+                encx, ency = self.inter_blocks(encx, ency, scope="num_inter_blocks_{}".format(i))
+
+            inter_encx = encx
+            inter_ency = ency
 
             x_layer = []
             y_layer = []
@@ -102,6 +105,11 @@ class FI:
                 y_layer.append(ency)
                 ae_loss_total += ae_loss
 
+            encx = tf.concat([encx, inter_encx], axis=-1)
+            ency = tf.concat([ency, inter_ency], axis=-1)
+
+            encx = tf.layers.dropout(encx, self.hp.dropout_rate, training=self.is_training)
+            ency = tf.layers.dropout(ency, self.hp.dropout_rate, training=self.is_training)
         # return x_layer, y_layer
         return encx, ency, ae_loss_total/2*len(self.AE_layer)
 
@@ -142,6 +150,8 @@ class FI:
                                        dropout_rate=self.hp.dropout_rate,
                                        training=self.is_training,
                                        causality=False)
+
+            encx, ency = self._infer(encx, ency)
 
             # feed forward
             encx = ff(encx, num_units=[self.hp.d_ff, encx.shape.as_list()[-1]])
@@ -299,32 +309,33 @@ class FI:
             #y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
 
             #cross_encx, cross_ency = self.calculate_att(encx, ency, scope="cal_att")
-            _encx, _ency = self._infer(encx, ency)
+            #_encx, _ency = self._infer(encx, ency)
             #print(cross_encx.shape)
             #print(cross_ency.shape)
             #可以有两种方式
             #1. concat前面所有层的信息
             #2. 只concat前面一层的信息
-            a_res = tf.concat([x_layer[-1]] + [encx, _encx], axis=2)
-            b_res = tf.concat([y_layer[-1]] + [ency, _ency], axis=2)
+            a_res = tf.concat([x_layer[-1]] + [encx], axis=2)
+            b_res = tf.concat([y_layer[-1]] + [ency], axis=2)
             print("a_res shape:", a_res.shape)
             print("b_res shape:", b_res.shape)
-
-            # a_res = self._project_op(a_res)  # (?,?,d_model)
-            # b_res = self._project_op(b_res)  # (?,?,d_model)
+            a_res = tf.layers.dropout(a_res, self.hp.dropout_rate, training=self.is_training)
+            b_res = tf.layers.dropout(b_res, self.hp.dropout_rate, training=self.is_training)
+            a_res = self._project_op(a_res)  # (?,?,d_model)
+            b_res = self._project_op(b_res)  # (?,?,d_model)
             ae_loss_a = 0
             ae_loss_b = 0
-            if layer_num in self.AE_layer:
-                a_res, ae_loss_a = self._AutoEncoder(a_res)
-                b_res, ae_loss_b = self._AutoEncoder(b_res)
+            # if layer_num in self.AE_layer:
+            #     a_res, ae_loss_a = self._AutoEncoder(a_res)
+            #     b_res, ae_loss_b = self._AutoEncoder(b_res)
 
         return a_res, b_res, ae_loss_a + ae_loss_b
 
 
     def _infer(self, encx, ency, scope="local_inference"):
         with tf.variable_scope(scope):
-            x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
-            y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
+            # x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
+            # y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
             # match_result_x = match_passage_with_question(encx, ency, x_mask, y_mask)
             # match_result_y = match_passage_with_question(ency, encx, x_mask, y_mask)
 
@@ -339,13 +350,13 @@ class FI:
 
             a_hat = tf.matmul(attentionSoft_a, ency)
             b_hat = tf.matmul(attentionSoft_b, encx)
-            # a_diff = tf.subtract(encx, a_hat)
-            # a_mul = tf.multiply(encx, a_hat)
-            # b_diff = tf.subtract(ency, b_hat)
-            # b_mul = tf.multiply(ency, b_hat)
+            a_diff = tf.subtract(encx, a_hat)
+            a_mul = tf.multiply(encx, a_hat)
+            b_diff = tf.subtract(ency, b_hat)
+            b_mul = tf.multiply(ency, b_hat)
 
-            a_res = tf.concat([encx, a_hat], axis=2)
-            b_res = tf.concat([ency, b_hat], axis=2)
+            a_res = tf.concat([a_hat, a_diff, a_mul], axis=2)
+            b_res = tf.concat([b_hat, b_diff, b_mul], axis=2)
 
             # BN
             # a_res = tf.layers.batch_normalization(a_res, training=self.is_training, name='bn1', reuse=tf.AUTO_REUSE)
@@ -354,8 +365,8 @@ class FI:
             a_res = self._project_op(a_res)  # (?,?,d_model)
             b_res = self._project_op(b_res)  # (?,?,d_model)
 
-            # a_res += encx
-            # b_res += ency
+            a_res += encx
+            b_res += ency
 
             a_res = ln(a_res)
             b_res = ln(b_res)
@@ -441,7 +452,7 @@ class FI:
             # feed forward
             ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
 
-            encx, ency = self._infer(encx, ency)
+            #encx, ency = self._infer(encx, ency)
 
         return encx, ency
 
@@ -530,20 +541,20 @@ class FI:
         x_repre, y_repre, ae_loss = self.representation(self.x, self.y)  # (layers, batchsize, maxlen, d_model)
 
         # BN
-        x_repre = tf.layers.batch_normalization(x_repre, training=self.is_training, name='bn1', reuse=tf.AUTO_REUSE)
-        y_repre = tf.layers.batch_normalization(y_repre, training=self.is_training, name='bn2', reuse=tf.AUTO_REUSE)
+        # x_repre = tf.layers.batch_normalization(x_repre, training=self.is_training, name='bn1', reuse=tf.AUTO_REUSE)
+        # y_repre = tf.layers.batch_normalization(y_repre, training=self.is_training, name='bn2', reuse=tf.AUTO_REUSE)
 
         # aggre
         #x_repre = self.aggregation(x_repre, x_repre)
         #y_repre = self.aggregation(y_repre, y_repre)
 
-        #avg_x = tf.reduce_mean(x_repre, axis=1)
-        max_x = tf.reduce_max(x_repre, axis=1)
-        #avg_y = tf.reduce_mean(y_repre, axis=1)
-        max_y = tf.reduce_max(y_repre, axis=1)
-        substract_xy = tf.subtract(max_x, max_y)
-        add_xy = tf.add(max_x, max_y)
-        agg_res = tf.concat([max_x, max_y, substract_xy, add_xy], axis=1)
+        avg_x = tf.reduce_mean(x_repre, axis=1)
+        #max_x = tf.reduce_max(x_repre, axis=1)
+        avg_y = tf.reduce_mean(y_repre, axis=1)
+        #max_y = tf.reduce_max(y_repre, axis=1)
+        # substract_xy = tf.subtract(max_x, max_y)
+        # add_xy = tf.add(max_x, max_y)
+        agg_res = tf.concat([avg_x, avg_y], axis=1)
         logits = self.fc(agg_res, match_dim=agg_res.shape.as_list()[-1])
         return logits, ae_loss
 
