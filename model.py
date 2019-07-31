@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 from data_load import load_vocab, loadGloVe
-from modules import get_token_embeddings, ff, positional_encoding, multihead_attention, ln, noam_scheme
+from modules import get_token_embeddings, ff, positional_encoding, multihead_attention, ln, positional_encoding_bert, noam_scheme
 from matching import match_passage_with_question, localInference, calculate_rele
 from tensorflow.python.ops import nn_ops
 
@@ -21,8 +21,8 @@ class FI:
         if self.hp.preembedding:
             self.embd = loadGloVe(self.hp.vec_path)
         self.embeddings = get_token_embeddings(self.embd, self.hp.vocab_size, self.hp.d_model, zero_pad=False)
-        self.x = tf.placeholder(tf.int32, [None, None], name="text_x")
-        self.y = tf.placeholder(tf.int32, [None, None], name="text_y")
+        self.x = tf.placeholder(tf.int32, [None, self.hp.maxlen], name="text_x")
+        self.y = tf.placeholder(tf.int32, [None, self.hp.maxlen], name="text_y")
         self.x_len = tf.placeholder(tf.int32, [None])
         self.y_len = tf.placeholder(tf.int32, [None])
         self.truth = tf.placeholder(tf.int32, [None, self.hp.num_class], name="truth")
@@ -68,15 +68,18 @@ class FI:
             encx = tf.nn.embedding_lookup(self.embeddings, x)  # (N, T1, d_model)
             encx *= self.hp.d_model ** 0.5  # scale
 
-            encx += positional_encoding(encx, self.hp.maxlen)
+            #encx += positional_encoding(encx, self.hp.maxlen)
+            encx += positional_encoding_bert(encx, self.hp.maxlen)
             encx = tf.layers.dropout(encx, self.hp.dropout_rate, training=self.is_training)
 
             ency = tf.nn.embedding_lookup(self.embeddings, y)  # (N, T1, d_model)
             ency *= self.hp.d_model ** 0.5  # scale
 
-            ency += positional_encoding(ency, self.hp.maxlen)
+            #ency += positional_encoding(ency, self.hp.maxlen)
+            ency += positional_encoding_bert(ency, self.hp.maxlen)
             ency = tf.layers.dropout(ency, self.hp.dropout_rate, training=self.is_training)
-
+            print(encx.shape)
+            print(ency.shape)
             # add ln
             encx = ln(encx)
             ency = ln(ency)

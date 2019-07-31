@@ -1,5 +1,6 @@
-num_params: 6919399
+num_params: 6934399
 shared_weight_matrix/weight_mat:0===(85, 300)
+representation/positional_encoding/position_embeddings:0===(50, 300)
 representation/ln/beta:0===(300,)
 representation/ln/gamma:0===(300,)
 representation/num_inter_blocks_0/multihead_attention/dense/kernel:0===(300, 300)
