@@ -136,10 +136,10 @@ class FI:
                                        training=self.is_training,
                                        causality=False)
 
-            infer_encx, infer_ency = self._infer(_encx, _ency)
+
 
             # self-attention
-            ency = multihead_attention(queries=infer_encx,
+            ency = multihead_attention(queries=_encx,
                                        keys=_ency,
                                        values=_ency,
                                        num_heads=self.hp.num_heads,
@@ -148,7 +148,7 @@ class FI:
                                        causality=False)
 
             # self-attention
-            encx = multihead_attention(queries=infer_ency,
+            encx = multihead_attention(queries=_ency,
                                        keys=_encx,
                                        values=_encx,
                                        num_heads=self.hp.num_heads,
@@ -156,7 +156,7 @@ class FI:
                                        training=self.is_training,
                                        causality=False)
 
-
+            encx, ency = self._infer(encx, ency)
 
             # feed forward
             encx = ff(encx, num_units=[self.hp.d_ff, encx.shape.as_list()[-1]])
@@ -370,8 +370,10 @@ class FI:
             a_res = self._project_op(a_res)  # (?,?,d_model)
             b_res = self._project_op(b_res)  # (?,?,d_model)
 
-            a_res += encx
-            b_res += ency
+            # a_res += encx
+            # b_res += ency
+            a_res = tf.concat([encx, a_res], axis=-1)
+            b_res = tf.concat([ency, b_res], axis=-1)
 
             a_res = ln(a_res)
             b_res = ln(b_res)
