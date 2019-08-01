@@ -136,8 +136,10 @@ class FI:
                                        training=self.is_training,
                                        causality=False)
 
+            infer_encx, infer_ency = self._infer(_encx, _ency)
+
             # self-attention
-            ency = multihead_attention(queries=_encx,
+            ency = multihead_attention(queries=infer_encx,
                                        keys=_ency,
                                        values=_ency,
                                        num_heads=self.hp.num_heads,
@@ -146,7 +148,7 @@ class FI:
                                        causality=False)
 
             # self-attention
-            encx = multihead_attention(queries=_ency,
+            encx = multihead_attention(queries=infer_ency,
                                        keys=_encx,
                                        values=_encx,
                                        num_heads=self.hp.num_heads,
@@ -154,7 +156,7 @@ class FI:
                                        training=self.is_training,
                                        causality=False)
 
-            encx, ency = self._infer(encx, ency)
+
 
             # feed forward
             encx = ff(encx, num_units=[self.hp.d_ff, encx.shape.as_list()[-1]])
