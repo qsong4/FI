@@ -197,10 +197,18 @@ class FI:
 
             #print(encx.shape)
             #print(ency.shape)
+            inter_encx = encx
+            inter_ency = ency
 
             # Inference Block
             for i in range(self.hp.inference_blocks):
                 encx, ency = self.inference_blocks(encx, ency, scope="num_inference_blocks_{}".format(i))
+
+            encx = tf.concat([encx, inter_encx], axis=-1)
+            ency = tf.concat([ency, inter_ency], axis=-1)
+
+            encx = tf.layers.dropout(encx, self.hp.dropout_rate, training=self.is_training)
+            encyx = tf.layers.dropout(ency, self.hp.dropout_rate, training=self.is_training)
 
         # return x_layer, y_layer
         return encx, ency
@@ -302,16 +310,16 @@ class FI:
 
     def _infer(self, encx, ency, scope="local_inference"):
         with tf.variable_scope(scope):
-            x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
-            y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
+            #x_mask = tf.sequence_mask(self.x_len, self.hp.maxlen, dtype=tf.float32)
+            #y_mask = tf.sequence_mask(self.y_len, self.hp.maxlen, dtype=tf.float32)
             # match_result_x = match_passage_with_question(encx, ency, x_mask, y_mask)
             # match_result_y = match_passage_with_question(ency, encx, x_mask, y_mask)
 
-            attentionWeights = self.calcuate_attention(encx, ency, self.hp.d_model+self.hp.char_lstm_dim*2, self.hp.d_model+self.hp.char_lstm_dim*2,
-                                              scope_name="attention", att_type=self.hp.att_type, att_dim=self.hp.att_dim,
-                                              remove_diagnoal=False, mask1=x_mask, mask2=y_mask)
+            # attentionWeights = self.calcuate_attention(encx, ency, self.hp.d_model+self.hp.char_lstm_dim*2, self.hp.d_model+self.hp.char_lstm_dim*2,
+            #                                   scope_name="attention", att_type=self.hp.att_type, att_dim=self.hp.att_dim,
+            #                                   remove_diagnoal=False, mask1=x_mask, mask2=y_mask)
 
-            #attentionWeights = tf.matmul(encx, tf.transpose(ency, [0, 2, 1]))
+            attentionWeights = tf.matmul(encx, tf.transpose(ency, [0, 2, 1]))
             attentionSoft_a = tf.nn.softmax(attentionWeights)
             attentionSoft_b = tf.nn.softmax(tf.transpose(attentionWeights))
             attentionSoft_b = tf.transpose(attentionSoft_b)
@@ -392,7 +400,7 @@ class FI:
             ency = ff(ency, num_units=[self.hp.d_ff, dim])
             #print(encx.shape)
             #print(ency.shape)
-            encx, ency = self._infer(encx, ency)
+            #encx, ency = self._infer(encx, ency)
 
         return encx, ency
 
