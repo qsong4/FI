@@ -13,7 +13,7 @@ class Hparams:
     parser.add_argument('--eval', default='./data/snli_test.tsv',
                              help="evaluation data")
 
-    parser.add_argument('--model_path', default='FImatchE%02dL%.2fA%.2f')
+    parser.add_argument('--model_path', default='FImatchE%02dL%.3fA%.3f')
     parser.add_argument('--modeldir', default='./model')
     parser.add_argument('--vec_path', default='./data/vec/snil_trimmed_vec.npy')
 
