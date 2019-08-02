@@ -1,15 +1,5 @@
-# Fully Multi-head Attention Inference Network
-> Fully Multi-head Attention Inference Network(FMAI) is a network base on multi-head attention implement by TF.
-
-## Abstract
-FMAI base on matching-aggregation framework, use transformer encoder to extract feature, and use interactive muti-head 
-attention do the matching part.(right now its just a toy version but perform well on particular dataset , I will update 
-it in the future.)
-
-## Dataset
-FMAI version is training on particular dataset which have 2 classes and more than 30m sentences.
-
-## Result
-FMAI get acc 0.999 and loss 0.0067 over 20 epoch(little overfitting)
-
-## Tips
+￥35 chicago  将 ——infer中的残差链接变为concat 原始版本 position embedding 采用了bert的 
+￥35 chicago  将 ——infer中的残差链接变为concat 原始版本 position embedding 采用了bert的 infer中只保留了a_hat❌
+￥35 chicago  将 ——infer中的残差链接变为concat 原始版本 position embedding 采用了bert的  每层和前面所有曾链接❌
+￥35 chicago  将 ——infer中的残差链接变为concat 原始版本 position embedding 采用了bert的 去掉了infer中的ff acc87.7  5.8m
+￥35 chicago  将 ——infer中的残差链接变为concat 原始版本 position embedding 采用了bert的  每层和前面所有曾链接 去掉了infer中的ff 
