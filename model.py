@@ -561,8 +561,12 @@ class FI:
         logits = self.fc(agg_res, match_dim=agg_res.shape.as_list()[-1])
         return logits, ae_loss
 
-    def _loss_op(self, l2_lambda=0.0001):
-        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.logits, labels=self.truth))
+    def _loss_op(self, l2_lambda=0.0001, label_smoothing=0.2):
+        if label_smoothing > 0:
+            smooth_positives = 1.0 - label_smoothing
+            smooth_negatives = label_smoothing / self.hp.num_class
+            one_hot_labels = self.truth * smooth_positives + smooth_negatives
+        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.logits, labels=one_hot_labels))
         weights = [v for v in tf.trainable_variables() if ('w' in v.name) or ('kernel') in v.name]
         l2_loss = tf.add_n([tf.nn.l2_loss(w) for w in weights]) * l2_lambda
         loss += l2_loss
