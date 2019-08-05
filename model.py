@@ -208,7 +208,7 @@ class FI:
             ency = tf.concat([ency, inter_ency], axis=-1)
 
             encx = tf.layers.dropout(encx, self.hp.dropout_rate, training=self.is_training)
-            encyx = tf.layers.dropout(ency, self.hp.dropout_rate, training=self.is_training)
+            ency = tf.layers.dropout(ency, self.hp.dropout_rate, training=self.is_training)
 
         # return x_layer, y_layer
         return encx, ency
