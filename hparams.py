@@ -71,7 +71,7 @@ class Hparams:
                         help="number of inter blocks")
     parser.add_argument('--num_agg_blocks', default=3, type=int,
                         help="number of agg blocks")
-    parser.add_argument('--num_heads', default=8, type=int,
+    parser.add_argument('--num_heads', default=6, type=int,
                         help="number of attention heads")
     parser.add_argument('--maxlen', default=50, type=int,
                         help="maximum length of a source sequence")

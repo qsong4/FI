@@ -313,7 +313,7 @@ class FI:
     def _project_op(self, inputx):
         #dim = inputx.shape.as_list()[-1]
         with tf.variable_scope("projection", reuse=tf.AUTO_REUSE):
-            inputx = tf.layers.dense(inputx, self.hp.d_model+self.hp.char_lstm_dim*2,
+            inputx = tf.layers.dense(inputx, self.hp.d_model,
                                      activation=tf.nn.relu,
                                      name='fnn',
                                      kernel_initializer=tf.truncated_normal_initializer(stddev=0.02))
@@ -468,6 +468,7 @@ class FI:
         return logits
 
     def _loss_op(self, l2_lambda=0.0001, label_smoothing=0.1):
+        self.truth = tf.cast(self.truth, self.logits.dtype)
         if label_smoothing > 0:
             smooth_positives = 1.0 - label_smoothing
             smooth_negatives = label_smoothing / self.hp.num_class
