@@ -295,6 +295,31 @@ def positional_encoding(inputs,
 
         return tf.to_float(outputs)
 
+def create_initializer(initializer_range=0.02):
+    return tf.truncated_normal_initializer(stddev=initializer_range)
+
+def positional_encoding_bert(inputs,
+                        maxlen,
+                        scope="positional_encoding"):
+    with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
+        width = inputs.shape.as_list()[-1]
+        seq_length = inputs.shape.as_list()[1]
+        full_position_embeddings = tf.get_variable(
+            name="position_embeddings",
+            shape=[maxlen, width],
+            initializer=create_initializer()
+        )
+        position_embeddings = tf.slice(full_position_embeddings, [0, 0],
+                                       [seq_length, -1])
+        num_dims = len(inputs.shape.as_list())
+        position_broadcast_shape = []
+        for _ in range(num_dims -2):
+            position_broadcast_shape.append(1)
+        position_broadcast_shape.extend([seq_length, width])
+        position_embeddings = tf.reshape(position_embeddings, position_broadcast_shape)
+
+    return position_embeddings
+
 def noam_scheme(init_lr, global_step, warmup_steps=4000.):
     '''Noam scheme learning rate decay
     init_lr: initial learning rate. scalar.

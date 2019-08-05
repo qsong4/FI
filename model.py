@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 from data_load import load_vocab, loadGloVe, load_char_vocab
-from modules import get_token_embeddings, ff, positional_encoding, multihead_attention, ln, noam_scheme
+from modules import get_token_embeddings, ff, positional_encoding, multihead_attention, ln, positional_encoding_bert
 from matching import match_passage_with_question, localInference
 from tensorflow.python.ops import nn_ops
 
@@ -157,8 +157,8 @@ class FI:
             x_char_output = tf.reshape(x_char_output, shape=[self.hp.batch_size, s_x[1], 2 * self.hp.char_lstm_dim])
 
             y_char_output = tf.reshape(y_char_output, shape=[self.hp.batch_size, s_y[1], 2 * self.hp.char_lstm_dim])
-            print(x_char_output.shape)
-            print(x_char_output.shape)
+            #print(x_char_output.shape)
+            #print(x_char_output.shape)
             return x_char_output, y_char_output
 
     def representation(self, xs, ys):
@@ -170,20 +170,22 @@ class FI:
             # print(y)
 
             # embedding
-            x_char_emb, y_char_emb = self._char_embedding()
+            #x_char_emb, y_char_emb = self._char_embedding()
 
             encx = tf.nn.embedding_lookup(self.embeddings, x)  # (N, T1, d_model)
             encx *= self.hp.d_model ** 0.5  # scale
 
-            encx += positional_encoding(encx, self.hp.maxlen)
-            encx = tf.concat([encx, x_char_emb], axis=-1)
+            #encx += positional_encoding(encx, self.hp.maxlen)
+            encx += positional_encoding_bert(encx, self.hp.maxlen)#bert版本的position embedding
+            #encx = tf.concat([encx, x_char_emb], axis=-1)
             encx = tf.layers.dropout(encx, self.hp.dropout_rate, training=self.is_training)
 
             ency = tf.nn.embedding_lookup(self.embeddings, y)  # (N, T1, d_model)
             ency *= self.hp.d_model ** 0.5  # scale
 
-            ency += positional_encoding(ency, self.hp.maxlen)
-            ency = tf.concat([ency, y_char_emb], axis=-1)
+            #ency += positional_encoding(ency, self.hp.maxlen)
+            ency += positional_encoding_bert(ency, self.hp.maxlen)
+            #ency = tf.concat([ency, y_char_emb], axis=-1)
             ency = tf.layers.dropout(ency, self.hp.dropout_rate, training=self.is_training)
 
             # add ln
@@ -204,6 +206,7 @@ class FI:
             for i in range(self.hp.inference_blocks):
                 encx, ency = self.inference_blocks(encx, ency, scope="num_inference_blocks_{}".format(i))
 
+            #将inter的结果和infer的结果拼接
             encx = tf.concat([encx, inter_encx], axis=-1)
             ency = tf.concat([ency, inter_ency], axis=-1)
 
@@ -217,9 +220,7 @@ class FI:
 
     def inference_blocks(self, a_repre, b_repre, scope, reuse=tf.AUTO_REUSE):
         with tf.variable_scope(scope, reuse=reuse):
-            # self-attention
-            dim = a_repre.shape.as_list()[-1]
-            encx = multihead_attention(queries=a_repre,
+            _encx = multihead_attention(queries=a_repre,
                                        keys=a_repre,
                                        values=a_repre,
                                        num_heads=self.hp.num_heads,
@@ -228,7 +229,7 @@ class FI:
                                        causality=False)
 
             # self-attention
-            ency = multihead_attention(queries=b_repre,
+            _ency = multihead_attention(queries=b_repre,
                                        keys=b_repre,
                                        values=b_repre,
                                        num_heads=self.hp.num_heads,
@@ -236,7 +237,27 @@ class FI:
                                        training=self.is_training,
                                        causality=False)
 
+            # self-attention
+
+            encx = multihead_attention(queries=_ency,
+                                       keys=_encx,
+                                       values=_encx,
+                                       num_heads=self.hp.num_heads,
+                                       dropout_rate=self.hp.dropout_rate,
+                                       training=self.is_training,
+                                       causality=False)
+
+            # self-attention
+            ency = multihead_attention(queries=_encx,
+                                       keys=_ency,
+                                       values=_ency,
+                                       num_heads=self.hp.num_heads,
+                                       dropout_rate=self.hp.dropout_rate,
+                                       training=self.is_training,
+                                       causality=False)
+
             encx, ency = self._infer(encx, ency)
+            dim = encx.shape.as_list()[-1]
             # feed forward
             encx = ff(encx, num_units=[self.hp.d_ff, dim])
             ency = ff(ency, num_units=[self.hp.d_ff, dim])
@@ -246,67 +267,6 @@ class FI:
             #ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
 
             return encx, ency
-
-    def calcuate_attention(self, in_value_1, in_value_2, feature_dim1, feature_dim2, scope_name='att',
-                           att_type='symmetric', att_dim=20, remove_diagnoal=False, mask1=None, mask2=None):
-        input_shape = tf.shape(in_value_1)
-        batch_size = input_shape[0]
-        len_1 = input_shape[1]
-        len_2 = tf.shape(in_value_2)[1]
-
-        #in_value_1 = tf.layers.dropout(in_value_1, hp.dropout_rate, training=training)
-        #in_value_2 = tf.layers.dropout(in_value_2, hp.dropout_rate, training=training)
-        with tf.variable_scope(scope_name):
-            # calculate attention ==> a: [batch_size, len_1, len_2]
-            atten_w1 = tf.get_variable("atten_w1", [feature_dim1, att_dim], dtype=tf.float32)
-            if feature_dim1 == feature_dim2:
-                atten_w2 = atten_w1
-            else:
-                atten_w2 = tf.get_variable("atten_w2", [feature_dim2, att_dim], dtype=tf.float32)
-            atten_value_1 = tf.matmul(tf.reshape(in_value_1, [batch_size * len_1, feature_dim1]),
-                                      atten_w1)  # [batch_size*len_1, feature_dim]
-            atten_value_1 = tf.reshape(atten_value_1, [batch_size, len_1, att_dim])
-            atten_value_2 = tf.matmul(tf.reshape(in_value_2, [batch_size * len_2, feature_dim2]),
-                                      atten_w2)  # [batch_size*len_2, feature_dim]
-            atten_value_2 = tf.reshape(atten_value_2, [batch_size, len_2, att_dim])
-
-            if att_type == 'additive':
-                atten_b = tf.get_variable("atten_b", [att_dim], dtype=tf.float32)
-                atten_v = tf.get_variable("atten_v", [1, att_dim], dtype=tf.float32)
-                atten_value_1 = tf.expand_dims(atten_value_1, axis=2,
-                                               name="atten_value_1")  # [batch_size, len_1, 'x', feature_dim]
-                atten_value_2 = tf.expand_dims(atten_value_2, axis=1,
-                                               name="atten_value_2")  # [batch_size, 'x', len_2, feature_dim]
-                atten_value = atten_value_1 + atten_value_2  # + tf.expand_dims(tf.expand_dims(tf.expand_dims(atten_b, axis=0), axis=0), axis=0)
-                atten_value = nn_ops.bias_add(atten_value, atten_b)
-                atten_value = tf.tanh(atten_value)  # [batch_size, len_1, len_2, feature_dim]
-                atten_value = tf.reshape(atten_value, [-1,
-                                                       att_dim]) * atten_v  # tf.expand_dims(atten_v, axis=0) # [batch_size*len_1*len_2, feature_dim]
-                atten_value = tf.reduce_sum(atten_value, axis=-1)
-                atten_value = tf.reshape(atten_value, [batch_size, len_1, len_2])
-            else:
-                atten_value_1 = tf.tanh(atten_value_1)
-                # atten_value_1 = tf.nn.relu(atten_value_1)
-                atten_value_2 = tf.tanh(atten_value_2)
-                # atten_value_2 = tf.nn.relu(atten_value_2)
-                diagnoal_params = tf.get_variable("diagnoal_params", [1, 1, att_dim], dtype=tf.float32)
-                atten_value_1 = atten_value_1 * diagnoal_params
-                atten_value = tf.matmul(atten_value_1, atten_value_2, transpose_b=True)  # [batch_size, len_1, len_2]
-
-            # normalize
-            if remove_diagnoal:
-                diagnoal = tf.ones([len_1], tf.float32)  # [len1]
-                diagnoal = 1.0 - tf.diag(diagnoal)  # [len1, len1]
-                diagnoal = tf.expand_dims(diagnoal, axis=0)  # ['x', len1, len1]
-                atten_value = atten_value * diagnoal
-            if mask1 is not None: atten_value = tf.multiply(atten_value, tf.expand_dims(mask1, axis=-1))
-            if mask2 is not None: atten_value = tf.multiply(atten_value, tf.expand_dims(mask2, axis=1))
-            atten_value = tf.nn.softmax(atten_value, name='atten_value')  # [batch_size, len_1, len_2]
-            if remove_diagnoal: atten_value = atten_value * diagnoal
-            if mask1 is not None: atten_value = tf.multiply(atten_value, tf.expand_dims(mask1, axis=-1))
-            if mask2 is not None: atten_value = tf.multiply(atten_value, tf.expand_dims(mask2, axis=1))
-
-        return atten_value
 
     def _infer(self, encx, ency, scope="local_inference"):
         with tf.variable_scope(scope):
@@ -378,7 +338,7 @@ class FI:
         with tf.variable_scope(scope, reuse=reuse):
             # self-attention
             dim = a_repre.shape.as_list()[-1]
-            encx = multihead_attention(queries=b_repre,
+            encx = multihead_attention(queries=a_repre,
                                        keys=a_repre,
                                        values=a_repre,
                                        num_heads=self.hp.num_heads,
@@ -389,7 +349,7 @@ class FI:
             encx = ff(encx, num_units=[self.hp.d_ff, dim])
 
             # self-attention
-            ency = multihead_attention(queries=a_repre,
+            ency = multihead_attention(queries=b_repre,
                                        keys=b_repre,
                                        values=b_repre,
                                        num_heads=self.hp.num_heads,
@@ -489,22 +449,29 @@ class FI:
         x_repre, y_repre = self.representation(self.x, self.y)  # (layers, batchsize, maxlen, d_model)
 
         # BN
-        x_repre = tf.layers.batch_normalization(x_repre, training=self.is_training, name='bn1', reuse=tf.AUTO_REUSE)
-        y_repre = tf.layers.batch_normalization(y_repre, training=self.is_training, name='bn2', reuse=tf.AUTO_REUSE)
+        x_repre = ln(x_repre)
+        y_repre = ln(y_repre)
+        # x_repre = tf.layers.batch_normalization(x_repre, training=self.is_training, name='bn1', reuse=tf.AUTO_REUSE)
+        # y_repre = tf.layers.batch_normalization(y_repre, training=self.is_training, name='bn2', reuse=tf.AUTO_REUSE)
 
         # aggre
-        x_repre = self.aggregation(x_repre, x_repre)
-        y_repre = self.aggregation(y_repre, y_repre)
+        # x_repre = self.aggregation(x_repre, x_repre)
+        # y_repre = self.aggregation(y_repre, y_repre)
 
         avg_x = tf.reduce_mean(x_repre, axis=1)
-        max_x = tf.reduce_max(x_repre, axis=1)
+        # max_x = tf.reduce_max(x_repre, axis=1)
         avg_y = tf.reduce_mean(y_repre, axis=1)
-        max_y = tf.reduce_max(y_repre, axis=1)
-        agg_res = tf.concat([avg_x, avg_y, max_x, max_y], axis=1)
+        # max_y = tf.reduce_max(y_repre, axis=1)
+        #agg_res = tf.concat([avg_x, avg_y, max_x, max_y], axis=1)
+        agg_res = tf.concat([avg_x, avg_y], axis=1)
         logits = self.fc(agg_res, match_dim=agg_res.shape.as_list()[-1])
         return logits
 
-    def _loss_op(self, l2_lambda=0.0001):
+    def _loss_op(self, l2_lambda=0.0001, label_smoothing=0.1):
+        if label_smoothing > 0:
+            smooth_positives = 1.0 - label_smoothing
+            smooth_negatives = label_smoothing / self.hp.num_class
+            self.truth = self.truth * smooth_positives + smooth_negatives
         loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.logits, labels=self.truth))
         weights = [v for v in tf.trainable_variables() if ('w' in v.name) or ('kernel') in v.name]
         l2_loss = tf.add_n([tf.nn.l2_loss(w) for w in weights]) * l2_lambda
