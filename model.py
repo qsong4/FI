@@ -394,6 +394,15 @@ class FI:
         # loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=labels))
         return logits
 
+    def fc_2l(self, inputs, num_units, scope="fc_2l"):
+        with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
+            # Inner layer
+            outputs = tf.layers.dense(inputs, num_units[0], activation=tf.nn.relu)
+
+            # Outer layer
+            outputs = tf.layers.dense(outputs, num_units[1])
+
+        return outputs
     # calculate classification accuracy
     def _acc_op(self):
         with tf.name_scope('acc'):
@@ -464,7 +473,8 @@ class FI:
         # max_y = tf.reduce_max(y_repre, axis=1)
         #agg_res = tf.concat([avg_x, avg_y, max_x, max_y], axis=1)
         agg_res = tf.concat([avg_x, avg_y], axis=1)
-        logits = self.fc(agg_res, match_dim=agg_res.shape.as_list()[-1])
+        #logits = self.fc(agg_res, match_dim=agg_res.shape.as_list()[-1])
+        logits = self.fc_2l(agg_res, num_units=[self.hp.d_ff, self.hp.num_class])
         return logits
 
     def _loss_op(self, l2_lambda=0.0001, label_smoothing=0.1):

@@ -1,4 +1,4 @@
-num_params: 4333875
+num_params: 4946723
 shared_weight_matrix/weight_mat:0===(85, 300)
 representation/positional_encoding/position_embeddings:0===(50, 300)
 representation/ln/beta:0===(300,)
@@ -83,5 +83,7 @@ representation/num_inference_blocks_2/positionwise_feedforward/ln/beta:0===(300,
 representation/num_inference_blocks_2/positionwise_feedforward/ln/gamma:0===(300,)
 ln/beta:0===(600,)
 ln/gamma:0===(600,)
-fc/w:0===(1200, 3)
-fc/b:0===(3,)
+fc_2l/dense/kernel:0===(1200, 512)
+fc_2l/dense/bias:0===(512,)
+fc_2l/dense_1/kernel:0===(512, 3)
+fc_2l/dense_1/bias:0===(3,)
