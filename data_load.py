@@ -5,6 +5,7 @@ from tqdm import tqdm
 import numpy as np
 import re
 from keras.preprocessing.sequence import pad_sequences
+from gensim.models import Word2Vec
 
 def loadGloVe(filename):
     embd = np.load(filename)
@@ -14,7 +15,7 @@ def loadGloVe_2(filename, emb_size):
     mu, sigma = 0, 0.1  # 均值与标准差
     rarray = np.random.normal(mu, sigma, emb_size)
     embd = {}
-    #embd['<pad>'] = [0]*emb_size
+    embd['<pad>'] = [0]*emb_size
     #embd['<pad>'] = list(rarray)
     embd['<unk>'] = list(rarray)
     file = open(filename,'r')
@@ -27,8 +28,24 @@ def loadGloVe_2(filename, emb_size):
     file.close()
     return embd
 
+def loadw2v(filename, emb_size):
+    mu, sigma = 0, 0.1  # 均值与标准差
+    rarray = np.random.normal(mu, sigma, emb_size)
+    embd = {}
+    embd['<pad>'] = [0]*emb_size
+    #embd['<pad>'] = list(rarray)
+    embd['<unk>'] = list(rarray)
+    w2v = Word2Vec.load(filename)
+    for word in w2v.wv.vocab:
+        if word in embd.keys():
+            continue
+        else:
+            embd[word] = w2v[word]
+    return embd
+
 def preprocessVec(gloveFile, vocab_file, outfile):
     emdb = loadGloVe_2(gloveFile, 300)
+    #emdb = loadw2v(gloveFile, 300) #中文w2v用的
     trimmd_embd = []
     with open(vocab_file, 'r') as fr:
         for line in fr:
