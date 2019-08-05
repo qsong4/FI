@@ -159,8 +159,8 @@ class FI:
             encx, ency = self._infer(encx, ency)
 
             # feed forward
-            encx = ff(encx, num_units=[self.hp.d_ff, encx.shape.as_list()[-1]])
-            ency = ff(ency, num_units=[self.hp.d_ff, ency.shape.as_list()[-1]])
+            # encx = ff(encx, num_units=[self.hp.d_ff, encx.shape.as_list()[-1]])
+            # ency = ff(ency, num_units=[self.hp.d_ff, ency.shape.as_list()[-1]])
 
             encx, ency, ae_loss = self._dense_infer(encx, ency, x_layer, y_layer, layer_num)
 
@@ -380,6 +380,16 @@ class FI:
 
         return a_res, b_res
 
+    def fc_2l(self, inputs, num_units, scope="fc_2l"):
+        with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
+            # Inner layer
+            outputs = tf.layers.dense(inputs, num_units[0], activation=tf.nn.relu)
+
+            # Outer layer
+            outputs = tf.layers.dense(outputs, num_units[1])
+
+        return outputs
+
     def _project_op(self, inputx):
         with tf.variable_scope("projection", reuse=tf.AUTO_REUSE):
             inputx = tf.layers.dense(inputx, self.hp.d_model,
@@ -562,7 +572,8 @@ class FI:
         # substract_xy = tf.subtract(max_x, max_y)
         # add_xy = tf.add(max_x, max_y)
         agg_res = tf.concat([avg_x, avg_y], axis=1)
-        logits = self.fc(agg_res, match_dim=agg_res.shape.as_list()[-1])
+        # logits = self.fc(agg_res, match_dim=agg_res.shape.as_list()[-1])
+        logits = self.fc_2l(agg_res, num_units=[self.hp.model_f, self.hp.num_class], scope="fc_2l")
         return logits, ae_loss
 
     def _loss_op(self, l2_lambda=0.0001):
