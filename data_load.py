@@ -189,9 +189,9 @@ def generator_fn(sents1, sents2, labels, maxlen, vocab_fpath, char_maxlen=-1, ch
     labelList = enc.fit_transform(labels)
     # print(labels)
     #print(labelList)
-    char_x = []
+    char_x = [[]]
     char_x_len = []
-    char_y = []
+    char_y = [[]]
     char_y_len = []
     for sent1, sent2, label in zip(sents1, sents2, labelList):
         x = encode(sent1.decode(), token2idx, maxlen)

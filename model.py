@@ -16,7 +16,7 @@ class FI:
     def __init__(self, hp):
         self.hp = hp
         self.token2idx, self.idx2token, self.hp.vocab_size = load_vocab(hp.vocab)
-        _, _, self.char_vocab_size = load_char_vocab(hp.char_vocab)
+        #_, _, self.char_vocab_size = load_char_vocab(hp.char_vocab)
         self.embd = None
         if self.hp.preembedding:
             self.embd = loadGloVe(self.hp.vec_path)
