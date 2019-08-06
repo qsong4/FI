@@ -468,11 +468,11 @@ class FI:
         y_repre = self.aggregation(y_repre, y_repre)
 
         avg_x = tf.reduce_mean(x_repre, axis=1)
-        # max_x = tf.reduce_max(x_repre, axis=1)
+        max_x = tf.reduce_max(x_repre, axis=1)
         avg_y = tf.reduce_mean(y_repre, axis=1)
-        # max_y = tf.reduce_max(y_repre, axis=1)
-        #agg_res = tf.concat([avg_x, avg_y, max_x, max_y], axis=1)
-        agg_res = tf.concat([avg_x, avg_y], axis=1)
+        max_y = tf.reduce_max(y_repre, axis=1)
+        agg_res = tf.concat([avg_x, avg_y, max_x, max_y], axis=1)
+        #agg_res = tf.concat([avg_x, avg_y], axis=1)
         #logits = self.fc(agg_res, match_dim=agg_res.shape.as_list()[-1])
         logits = self.fc_2l(agg_res, num_units=[self.hp.d_ff, self.hp.num_class])
         return logits
