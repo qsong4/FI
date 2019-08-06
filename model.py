@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from data_load import load_vocab, loadGloVe
+from data_load import load_vocab, loadGloVe, load_char_vocab
 from modules import get_token_embeddings, ff, positional_encoding, multihead_attention, ln, positional_encoding_bert, noam_scheme
 from matching import match_passage_with_question, localInference, calculate_rele
 from tensorflow.python.ops import nn_ops
@@ -17,6 +17,7 @@ class FI:
         self.hp = hp
         self.AE_layer = list(map(int, self.hp.ae_layer.split(",")))
         self.token2idx, self.idx2token, self.hp.vocab_size = load_vocab(hp.vocab)
+        _, _, self.char_vocab_size = load_char_vocab(hp.char_vocab)
         self.embd = None
         if self.hp.preembedding:
             self.embd = loadGloVe(self.hp.vec_path)
@@ -27,6 +28,23 @@ class FI:
         self.y_len = tf.placeholder(tf.int32, [None])
         self.truth = tf.placeholder(tf.int32, [None, self.hp.num_class], name="truth")
         self.is_training = tf.placeholder(tf.bool,shape=None, name="is_training")
+
+        if self.hp.char_embedding:
+            ## Char embedding
+            ## shape = (batch_size, max length of sentence, max length of word)
+            self.x_char_ids = tf.placeholder(tf.int32, shape=[None, self.hp.maxlen, self.hp.char_maxlen],
+                            name="x_char_ids")
+
+            ## shape = (batch_size, max_length of sentence)
+            self.x_word_lengths = tf.placeholder(tf.int32, shape=[None, self.hp.maxlen],
+                            name="x_word_lengths")
+            ## shape = (batch_size, max length of sentence, max length of word)
+            self.y_char_ids = tf.placeholder(tf.int32, shape=[None, self.hp.maxlen, self.hp.char_maxlen],
+                            name="y_char_ids")
+
+            ## shape = (batch_size, max_length of sentence)
+            self.y_word_lengths = tf.placeholder(tf.int32, shape=[None, self.hp.maxlen],
+                            name="y_word_lengths")
 
         self.logits, self.ae_loss = self._logits_op()
         self.loss = self._loss_op()
@@ -46,6 +64,15 @@ class FI:
 
         return feed_dict
 
+    def create_char_feed_dict(self, feed_dict, x_char_ids, x_word_lengths, y_char_ids, y_word_lengths):
+        feed_dict[self.x_char_ids] = x_char_ids
+        feed_dict[self.y_char_ids] = y_char_ids
+        feed_dict[self.x_word_lengths] = x_word_lengths
+        feed_dict[self.y_word_lengths] = y_word_lengths
+
+        return feed_dict
+
+
     def create_feed_dict_infer(self, x, y, x_len, y_len):
         feed_dict = {
             self.x: x,
@@ -56,6 +83,139 @@ class FI:
 
         return feed_dict
 
+    def my_lstm_layer(self, input_reps, lstm_dim, input_lengths=None, scope_name=None, reuse=False, is_training=True,
+                      dropout_rate=0.2):
+        with tf.variable_scope(scope_name, reuse=reuse):
+            context_lstm_cell_fw = tf.nn.rnn_cell.LSTMCell(lstm_dim)
+            context_lstm_cell_bw = tf.nn.rnn_cell.LSTMCell(lstm_dim)
+            '''
+            if is_training is not None:
+                context_lstm_cell_fw = tf.nn.rnn_cell.DropoutWrapper(context_lstm_cell_fw,
+                                                                     output_keep_prob=(1 - dropout_rate))
+                context_lstm_cell_bw = tf.nn.rnn_cell.DropoutWrapper(context_lstm_cell_bw,
+                                                                     output_keep_prob=(1 - dropout_rate))
+            '''
+            #context_lstm_cell_fw = tf.nn.rnn_cell.MultiRNNCell([context_lstm_cell_fw])
+            #context_lstm_cell_bw = tf.nn.rnn_cell.MultiRNNCell([context_lstm_cell_bw])
+
+            (f_rep, b_rep), _ = tf.nn.bidirectional_dynamic_rnn(
+                context_lstm_cell_fw, context_lstm_cell_bw, input_reps, dtype=tf.float32,
+                sequence_length=input_lengths)  # [batch_size, question_len, context_lstm_dim]
+            outputs = tf.concat(axis=2, values=[f_rep, b_rep])
+        return (f_rep, b_rep, outputs)
+
+    def collect_final_step_of_lstm(self, lstm_representation, lengths):
+        # lstm_representation: [batch_size, passsage_length, dim]
+        # lengths: [batch_size]
+        lengths = tf.maximum(lengths, tf.zeros_like(lengths, dtype=tf.int32))
+
+        batch_size = tf.shape(lengths)[0]
+        batch_nums = tf.range(0, limit=batch_size)  # shape (batch_size)
+        indices = tf.stack((batch_nums, lengths), axis=1)  # shape (batch_size, 2)
+        result = tf.gather_nd(lstm_representation, indices, name='last-forwar-lstm')
+        return result  # [batch_size, dim]
+
+
+    def _lstm_char_embedding(self):
+        with tf.variable_scope("chars", reuse=tf.AUTO_REUSE):
+            # get embeddings matrix
+            _char_embeddings = tf.get_variable(name="_char_embeddings", dtype=tf.float32,
+                shape=[self.char_vocab_size, self.hp.char_dim])
+
+            x_char_embeddings = tf.nn.embedding_lookup(_char_embeddings, self.x_char_ids,
+                name="x_char_embeddings")
+            y_char_embeddings = tf.nn.embedding_lookup(_char_embeddings, self.y_char_ids,
+                                                       name="y_char_embeddings")
+            # put the time dimension on axis=1
+            s_x = tf.shape(x_char_embeddings)
+            s_y = tf.shape(y_char_embeddings)
+            x_char_embeddings = tf.reshape(x_char_embeddings, shape=[-1, s_x[-2], self.hp.char_dim])
+            y_char_embeddings = tf.reshape(y_char_embeddings, shape=[-1, s_y[-2], self.hp.char_dim])
+            x_lengths = tf.reshape(self.x_word_lengths, shape=[-1])
+            y_lengths = tf.reshape(self.y_word_lengths, shape=[-1])
+            x_char_mask = tf.sequence_mask(x_lengths, s_x[2], dtype=tf.float32)  # [batch_size*question_len, q_char_len]
+            x_char_embeddings = tf.multiply(x_char_embeddings, tf.expand_dims(x_char_mask, axis=-1))
+            y_char_mask = tf.sequence_mask(y_lengths, s_y[2], dtype=tf.float32)  # [batch_size*question_len, q_char_len]
+            y_char_embeddings = tf.multiply(y_char_embeddings, tf.expand_dims(y_char_mask, axis=-1))
+
+            # bi lstm on chars
+            # need 2 instances of cells since tf 1.1
+            (x_char_fw, x_char_bw, _) = self.my_lstm_layer(x_char_embeddings, self.hp.char_lstm_dim, input_lengths=x_lengths,
+                                                    scope_name="char_lstm", reuse=tf.AUTO_REUSE, is_training=self.is_training,
+                                                    dropout_rate=self.hp.dropout_rate)
+            (y_char_fw, y_char_bw, _) = self.my_lstm_layer(y_char_embeddings, self.hp.char_lstm_dim, input_lengths=y_lengths,
+                                                    scope_name="char_lstm", reuse=tf.AUTO_REUSE, is_training=self.is_training,
+                                                    dropout_rate=self.hp.dropout_rate)
+
+            x_char_fw = self.collect_final_step_of_lstm(x_char_fw, x_lengths-1)
+            x_char_bw = x_char_bw[:, 0, :]
+            y_char_fw = self.collect_final_step_of_lstm(y_char_fw, y_lengths-1)
+            y_char_bw = y_char_bw[:, 0, :]
+
+            x_char_output = tf.concat(axis=1, values=[x_char_fw, x_char_bw])
+            y_char_output = tf.concat(axis=1, values=[y_char_fw, y_char_bw])
+
+            # shape = (batch size, max sentence length, char hidden size)
+            self.ppp = tf.print(["x_char_output"], x_char_output.shape)
+            x_char_output = tf.reshape(x_char_output, shape=[self.hp.batch_size, s_x[1], 2 * self.hp.char_lstm_dim])
+
+            y_char_output = tf.reshape(y_char_output, shape=[self.hp.batch_size, s_y[1], 2 * self.hp.char_lstm_dim])
+            #print(x_char_output.shape)
+            #print(x_char_output.shape)
+            return x_char_output, y_char_output
+
+    def char_cnn(self, inputs, filter_sizes, num_filters, is_reuse=tf.AUTO_REUSE):
+        input_shape = inputs.shape.as_list()
+        num_words, num_chars, input_size = input_shape[0], input_shape[1],input_shape[2]
+        outputs = []
+        for i, filter_sizes in enumerate(filter_sizes):
+            with tf.variable_scope("conv_{}".format(i), reuse=is_reuse):
+                w = tf.get_variable(name='w',
+                                    shape=[filter_sizes, input_size, num_filters],
+                                    dtype=tf.float32,
+                                    initializer=tf.random_uniform_initializer(-0.01, 0.01))
+                b = tf.get_variable(name='b',
+                                    shape=[num_filters],
+                                    dtype=tf.float32,
+                                    initializer=tf.zeros_initializer())
+                conv = tf.nn.conv1d(inputs, w, stride=1, padding="VALID")
+                h = tf.nn.relu(tf.nn.bias_add(conv, b))
+                pooled = tf.reduce_max(h, 1)
+                outputs.append(pooled)
+        return tf.concat(outputs, 1)
+
+
+    def _cnn_char_embedding(self):
+        with tf.variable_scope("chars", reuse=tf.AUTO_REUSE):
+            # get embeddings matrix
+            _char_embeddings = tf.get_variable(name="_char_embeddings", dtype=tf.float32,
+                shape=[self.char_vocab_size, self.hp.char_dim])
+
+            x_char_embeddings = tf.nn.embedding_lookup(_char_embeddings, self.x_char_ids,
+                name="x_char_embeddings")
+            y_char_embeddings = tf.nn.embedding_lookup(_char_embeddings, self.y_char_ids,
+                                                       name="y_char_embeddings")
+
+            s_x = tf.shape(x_char_embeddings)
+            s_y = tf.shape(y_char_embeddings)
+
+            x_char_embeddings = tf.reshape(x_char_embeddings, shape=[-1, s_x[-2], self.hp.char_dim])
+            y_char_embeddings = tf.reshape(y_char_embeddings, shape=[-1, s_y[-2], self.hp.char_dim])
+
+            agg_x_char = self.char_cnn(x_char_embeddings, filter_sizes=[3,4,5], num_filters=50)
+            agg_y_char = self.char_cnn(y_char_embeddings, filter_sizes=[3,4,5], num_filters=50)
+            print("agg_x_char", agg_x_char.shape)
+
+            x_char_output = tf.reshape(agg_x_char, shape=[self.hp.batch_size, s_x[1], 3 * 50])
+            y_char_output = tf.reshape(agg_y_char, shape=[self.hp.batch_size, s_y[1], 3 * 50])
+
+            return x_char_output, y_char_output
+
+    def _char_embedding(self):
+        #x_char_emb, y_char_emb = self._lstm_char_embedding()
+        x_char_emb, y_char_emb = self._cnn_char_embedding()
+        return x_char_emb, y_char_emb
+
     def representation(self, xs, ys):
         with tf.variable_scope("representation", reuse=tf.AUTO_REUSE):
             x = xs
@@ -64,12 +224,17 @@ class FI:
             # print(x)
             # print(y)
 
+            x_char_emb, y_char_emb = self._char_embedding()
+
             # embedding
             encx = tf.nn.embedding_lookup(self.embeddings, x)  # (N, T1, d_model)
             encx *= self.hp.d_model ** 0.5  # scale
 
             #encx += positional_encoding(encx, self.hp.maxlen)
             encx += positional_encoding_bert(encx, self.hp.maxlen)
+            encx = tf.concat([encx, x_char_emb], axis=-1)
+            encx = tf.layers.dense(encx, self.hp.d_model, activation=tf.nn.relu,
+                                   kernel_initializer=tf.truncated_normal_initializer(stddev=0.02))
             encx = tf.layers.dropout(encx, self.hp.dropout_rate, training=self.is_training)
 
             ency = tf.nn.embedding_lookup(self.embeddings, y)  # (N, T1, d_model)
@@ -77,6 +242,9 @@ class FI:
 
             #ency += positional_encoding(ency, self.hp.maxlen)
             ency += positional_encoding_bert(ency, self.hp.maxlen)
+            ency = tf.concat([ency, y_char_emb], axis=-1)
+            ency = tf.layers.dense(ency, self.hp.d_model, activation=tf.nn.relu,
+                                   kernel_initializer=tf.truncated_normal_initializer(stddev=0.02))
             ency = tf.layers.dropout(ency, self.hp.dropout_rate, training=self.is_training)
             print(encx.shape)
             print(ency.shape)
@@ -573,7 +741,7 @@ class FI:
         # add_xy = tf.add(max_x, max_y)
         agg_res = tf.concat([avg_x, avg_y], axis=1)
         # logits = self.fc(agg_res, match_dim=agg_res.shape.as_list()[-1])
-        logits = self.fc_2l(agg_res, num_units=[self.hp.model_f, self.hp.num_class], scope="fc_2l")
+        logits = self.fc_2l(agg_res, num_units=[self.hp.d_model, self.hp.num_class], scope="fc_2l")
         return logits, ae_loss
 
     def _loss_op(self, l2_lambda=0.0001):

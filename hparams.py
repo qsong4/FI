@@ -20,6 +20,8 @@ class Hparams:
     ## vocabulary
     parser.add_argument('--vocab', default='./data/snli.vocab',
                         help="vocabulary file path")
+    parser.add_argument('--char_vocab', default='./data/snli.char.vocab',
+                        help="vocabulary file path")
 
     #AE
     parser.add_argument('--ae_layer', default='0,1,2,3,4')
@@ -30,6 +32,8 @@ class Hparams:
     parser.add_argument('--preembedding', default=False, type=bool) #本地测试使用
     #parser.add_argument('--preembedding', default=True, type=bool) #实际训练使用
     parser.add_argument('--early_stop', default=20, type=int)
+    parser.add_argument('--char_embedding', default=True, type=bool)
+    parser.add_argument('--char_dim', default=20, type=int)
 
     #learning rate 0.0003 is too high
     parser.add_argument('--lr', default=0.0001, type=float, help="learning rate")
@@ -78,6 +82,10 @@ class Hparams:
                         help="number of class")
     parser.add_argument('--dropout_rate', default=0.1, type=float)
     parser.add_argument('--is_training', default=True, type=bool)
+    parser.add_argument('--char_maxlen', default=10, type=int,
+                        help="maximum length of a word")
+    parser.add_argument('--char_lstm_dim', default=50, type=int,
+                        help="maximum length of a word")
 
     # test
     parser.add_argument('--test_file', default='./data/snli_test.tsv')

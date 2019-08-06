@@ -41,9 +41,10 @@ def genvocabGlove(inputfile, vocab_file):
             fw.write(i+'\n')
     return vocab
 
-def prepro_snli(train_file, dev_file, vocab_file):
+def prepro_snli(train_file, dev_file, vocab_file, char_file):
     vocab_set = set()
     label_set = set()
+    char_set = set()
     for f in (train_file, dev_file):
         with open(f, "r") as fr:
             for line in fr:
@@ -59,6 +60,8 @@ def prepro_snli(train_file, dev_file, vocab_file):
                     if i == "":
                         continue
                     vocab_set.add(i)
+                    for char in i:
+                        char_set.add(char.strip())
                 label_set.add(label)
     #0: <pad>, 1: <unk>, 2: <s>, 3: </s>
     with open(vocab_file, "w") as fw:
@@ -66,6 +69,14 @@ def prepro_snli(train_file, dev_file, vocab_file):
         fw.write("<unk>"+"\n")
         for i in vocab_set:
             fw.write(i+'\n')
+
+    with open(char_file, "w") as fw:
+        fw.write("<pad>"+"\n")
+        fw.write("<unk>"+"\n")
+        for i in char_set:
+            i.strip()
+            fw.write(i+'\n')
+
     print("labels: ", label_set)
 
 
@@ -74,6 +85,7 @@ if __name__ == '__main__':
     train_file = "./data/snli_train.tsv"
     dev_file = "./data/snli_dev.tsv"
     vocab_file = "./data/snli.vocab"
+    char_file = "./data/snli.char.vocab"
     #prepro(train_file, dev_file, vocab_file)
-    prepro_snli("./data/snli_train.tsv", "./data/snli_dev.tsv", vocab_file)
+    prepro_snli("./data/snli_train.tsv", "./data/snli_dev.tsv", vocab_file, char_file)
     #genvocabGlove("./data/vec/glove.840B.300d.txt", vocab_file)
