@@ -199,19 +199,19 @@ class FI:
 
             #print(encx.shape)
             #print(ency.shape)
-            inter_encx = encx
-            inter_ency = ency
+            # inter_encx = encx
+            # inter_ency = ency
 
             # Inference Block
             for i in range(self.hp.inference_blocks):
                 encx, ency = self.inference_blocks(encx, ency, scope="num_inference_blocks_{}".format(i))
 
             #将inter的结果和infer的结果拼接
-            encx = tf.concat([encx, inter_encx], axis=-1)
-            ency = tf.concat([ency, inter_ency], axis=-1)
-
-            encx = tf.layers.dropout(encx, self.hp.dropout_rate, training=self.is_training)
-            ency = tf.layers.dropout(ency, self.hp.dropout_rate, training=self.is_training)
+            # encx = tf.concat([encx, inter_encx], axis=-1)
+            # ency = tf.concat([ency, inter_ency], axis=-1)
+            #
+            # encx = tf.layers.dropout(encx, self.hp.dropout_rate, training=self.is_training)
+            # ency = tf.layers.dropout(ency, self.hp.dropout_rate, training=self.is_training)
 
         # return x_layer, y_layer
         return encx, ency
@@ -220,6 +220,7 @@ class FI:
 
     def inference_blocks(self, a_repre, b_repre, scope, reuse=tf.AUTO_REUSE):
         with tf.variable_scope(scope, reuse=reuse):
+            '''
             _encx = multihead_attention(queries=a_repre,
                                        keys=a_repre,
                                        values=a_repre,
@@ -236,21 +237,21 @@ class FI:
                                        dropout_rate=self.hp.dropout_rate,
                                        training=self.is_training,
                                        causality=False)
-
+            '''
             # self-attention
 
-            encx = multihead_attention(queries=_ency,
-                                       keys=_encx,
-                                       values=_encx,
+            encx = multihead_attention(queries=a_repre,
+                                       keys=a_repre,
+                                       values=a_repre,
                                        num_heads=self.hp.num_heads,
                                        dropout_rate=self.hp.dropout_rate,
                                        training=self.is_training,
                                        causality=False)
 
             # self-attention
-            ency = multihead_attention(queries=_encx,
-                                       keys=_ency,
-                                       values=_ency,
+            ency = multihead_attention(queries=b_repre,
+                                       keys=b_repre,
+                                       values=b_repre,
                                        num_heads=self.hp.num_heads,
                                        dropout_rate=self.hp.dropout_rate,
                                        training=self.is_training,
@@ -338,7 +339,7 @@ class FI:
         with tf.variable_scope(scope, reuse=reuse):
             # self-attention
             dim = a_repre.shape.as_list()[-1]
-            encx = multihead_attention(queries=a_repre,
+            encx = multihead_attention(queries=b_repre,
                                        keys=a_repre,
                                        values=a_repre,
                                        num_heads=self.hp.num_heads,
@@ -349,7 +350,7 @@ class FI:
             encx = ff(encx, num_units=[self.hp.d_ff, dim])
 
             # self-attention
-            ency = multihead_attention(queries=b_repre,
+            ency = multihead_attention(queries=a_repre,
                                        keys=b_repre,
                                        values=b_repre,
                                        num_heads=self.hp.num_heads,
@@ -456,7 +457,6 @@ class FI:
     def _logits_op(self):
         # representation
         x_repre, y_repre = self.representation(self.x, self.y)  # (layers, batchsize, maxlen, d_model)
-
         # BN
         x_repre = ln(x_repre)
         y_repre = ln(y_repre)
@@ -464,8 +464,8 @@ class FI:
         # y_repre = tf.layers.batch_normalization(y_repre, training=self.is_training, name='bn2', reuse=tf.AUTO_REUSE)
 
         # aggre
-        # x_repre = self.aggregation(x_repre, x_repre)
-        # y_repre = self.aggregation(y_repre, y_repre)
+        x_repre = self.aggregation(x_repre, x_repre)
+        y_repre = self.aggregation(y_repre, y_repre)
 
         avg_x = tf.reduce_mean(x_repre, axis=1)
         # max_x = tf.reduce_max(x_repre, axis=1)

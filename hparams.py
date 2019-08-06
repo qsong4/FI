@@ -18,7 +18,7 @@ class Hparams:
     parser.add_argument('--vec_path', default='./data/vec/snil_trimmed_vec.npy')
 
     ## vocabulary
-    parser.add_argument('--vocab', default='./data/snli.vocab',
+    parser.add_argument('--vocab', default='./data/vocab/snli.vocab',
                         help="vocabulary file path")
     parser.add_argument('--char_vocab', default='./data/snli.char.vocab',
                         help="vocabulary file path")
