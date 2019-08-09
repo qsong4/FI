@@ -46,6 +46,9 @@ class Hparams:
     parser.add_argument('--att_dim', default=100, type=int)
     parser.add_argument('--att_type', default="symmetric")
 
+    #LSTM
+    parser.add_argument('--lstm_dim', default=300, type=int)
+
     #cnn agg
     parser.add_argument('--filter_sizes', default='3,4,5')
     parser.add_argument('--num_filters', default=128, type=int)

@@ -60,34 +60,45 @@ class FI:
         with tf.variable_scope("representation", reuse=tf.AUTO_REUSE):
             x = xs
             y = ys
+            encx = tf.nn.embedding_lookup(self.embeddings, x)
+            ency = tf.nn.embedding_lookup(self.embeddings, y)
+            (x_fw, x_bw, x_output) = self.my_lstm_layer(encx, self.hp.lstm_dim, input_lengths=self.x_len,
+                                                    scope_name="input_lstm", reuse=tf.AUTO_REUSE, is_training=self.is_training,
+                                                    dropout_rate=self.hp.dropout_rate)
+            (y_fw, y_bw, y_output) = self.my_lstm_layer(ency, self.hp.lstm_dim, input_lengths=self.y_len,
+                                                    scope_name="input_lstm", reuse=tf.AUTO_REUSE, is_training=self.is_training,
+                                                    dropout_rate=self.hp.dropout_rate)
+
+            encx = ln(x_output)
+            ency = ln(y_output)
 
             # print(x)
             # print(y)
 
             # embedding
-            encx = tf.nn.embedding_lookup(self.embeddings, x)  # (N, T1, d_model)
-            encx *= self.hp.d_model ** 0.5  # scale
-
-            #encx += positional_encoding(encx, self.hp.maxlen)
-            encx += positional_encoding_bert(encx, self.hp.maxlen)
-            encx = tf.layers.dropout(encx, self.hp.dropout_rate, training=self.is_training)
-
-            ency = tf.nn.embedding_lookup(self.embeddings, y)  # (N, T1, d_model)
-            ency *= self.hp.d_model ** 0.5  # scale
-
-            #ency += positional_encoding(ency, self.hp.maxlen)
-            ency += positional_encoding_bert(ency, self.hp.maxlen)
-            ency = tf.layers.dropout(ency, self.hp.dropout_rate, training=self.is_training)
+            # encx = tf.nn.embedding_lookup(self.embeddings, x)  # (N, T1, d_model)
+            # encx *= self.hp.d_model ** 0.5  # scale
+            #
+            # #encx += positional_encoding(encx, self.hp.maxlen)
+            # encx += positional_encoding_bert(encx, self.hp.maxlen)
+            # encx = tf.layers.dropout(encx, self.hp.dropout_rate, training=self.is_training)
+            #
+            # ency = tf.nn.embedding_lookup(self.embeddings, y)  # (N, T1, d_model)
+            # ency *= self.hp.d_model ** 0.5  # scale
+            #
+            # #ency += positional_encoding(ency, self.hp.maxlen)
+            # ency += positional_encoding_bert(ency, self.hp.maxlen)
+            # ency = tf.layers.dropout(ency, self.hp.dropout_rate, training=self.is_training)
             print(encx.shape)
             print(ency.shape)
             # add ln
-            encx = ln(encx)
-            ency = ln(ency)
+            # encx = ln(encx)
+            # ency = ln(ency)
 
             # 这两个模块可以互换
             # Inter Inference Block
-            for i in range(self.hp.num_inter_blocks):
-                encx, ency = self.inter_blocks(encx, ency, scope="num_inter_blocks_{}".format(i))
+            # for i in range(self.hp.num_inter_blocks):
+            #     encx, ency = self.inter_blocks(encx, ency, scope="num_inter_blocks_{}".format(i))
 
             inter_encx = encx
             inter_ency = ency
@@ -157,8 +168,8 @@ class FI:
             encx, ency = self._infer(encx, ency)
 
             # feed forward
-            encx = ff(encx, num_units=[self.hp.d_ff, encx.shape.as_list()[-1]])
-            ency = ff(ency, num_units=[self.hp.d_ff, ency.shape.as_list()[-1]])
+            #encx = ff(encx, num_units=[self.hp.d_ff, encx.shape.as_list()[-1]])
+            #ency = ff(ency, num_units=[self.hp.d_ff, ency.shape.as_list()[-1]])
 
             encx, ency, ae_loss = self._dense_infer(encx, ency, x_layer, y_layer, layer_num)
 
@@ -322,8 +333,8 @@ class FI:
             b_res = tf.concat([y_layer[-1]] + [ency], axis=2)
             print("a_res shape:", a_res.shape)
             print("b_res shape:", b_res.shape)
-            a_res = tf.layers.dropout(a_res, self.hp.dropout_rate, training=self.is_training)
-            b_res = tf.layers.dropout(b_res, self.hp.dropout_rate, training=self.is_training)
+            #a_res = tf.layers.dropout(a_res, self.hp.dropout_rate, training=self.is_training)
+            #b_res = tf.layers.dropout(b_res, self.hp.dropout_rate, training=self.is_training)
             a_res = self._project_op(a_res)  # (?,?,d_model)
             b_res = self._project_op(b_res)  # (?,?,d_model)
             ae_loss_a = 0
@@ -368,8 +379,8 @@ class FI:
             a_res = self._project_op(a_res)  # (?,?,d_model)
             b_res = self._project_op(b_res)  # (?,?,d_model)
 
-            a_res += encx
-            b_res += ency
+            a_res = tf.concat([encx, a_res], axis=-1)
+            b_res = tf.concat([ency, b_res], axis=-1)
 
             a_res = ln(a_res)
             b_res = ln(b_res)
@@ -384,6 +395,27 @@ class FI:
                                      kernel_initializer=tf.truncated_normal_initializer(stddev=0.02))
 
             return inputx
+
+    def my_lstm_layer(self, input_reps, lstm_dim, input_lengths=None, scope_name=None, reuse=False, is_training=True,
+                      dropout_rate=0.2):
+        with tf.variable_scope(scope_name, reuse=reuse):
+            context_lstm_cell_fw = tf.nn.rnn_cell.LSTMCell(lstm_dim)
+            context_lstm_cell_bw = tf.nn.rnn_cell.LSTMCell(lstm_dim)
+            '''
+            if is_training is not None:
+                context_lstm_cell_fw = tf.nn.rnn_cell.DropoutWrapper(context_lstm_cell_fw,
+                                                                     output_keep_prob=(1 - dropout_rate))
+                context_lstm_cell_bw = tf.nn.rnn_cell.DropoutWrapper(context_lstm_cell_bw,
+                                                                     output_keep_prob=(1 - dropout_rate))
+            '''
+            #context_lstm_cell_fw = tf.nn.rnn_cell.MultiRNNCell([context_lstm_cell_fw])
+            #context_lstm_cell_bw = tf.nn.rnn_cell.MultiRNNCell([context_lstm_cell_bw])
+
+            (f_rep, b_rep), _ = tf.nn.bidirectional_dynamic_rnn(
+                context_lstm_cell_fw, context_lstm_cell_bw, input_reps, dtype=tf.float32,
+                sequence_length=input_lengths)  # [batch_size, question_len, context_lstm_dim]
+            outputs = tf.concat(axis=2, values=[f_rep, b_rep])
+        return (f_rep, b_rep, outputs)
 
     def _AutoEncoder(self, inputx):
         with tf.variable_scope("AE", reuse=tf.AUTO_REUSE):
@@ -562,11 +594,12 @@ class FI:
         return logits, ae_loss
 
     def _loss_op(self, l2_lambda=0.0001, label_smoothing=0.2):
+        self.truth = tf.cast(self.truth, self.logits.dtype)
         if label_smoothing > 0:
             smooth_positives = 1.0 - label_smoothing
             smooth_negatives = label_smoothing / self.hp.num_class
             one_hot_labels = self.truth * smooth_positives + smooth_negatives
-        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.logits, labels=one_hot_labels))
+        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.logits, labels=self.truth))
         weights = [v for v in tf.trainable_variables() if ('w' in v.name) or ('kernel') in v.name]
         l2_loss = tf.add_n([tf.nn.l2_loss(w) for w in weights]) * l2_lambda
         loss += l2_loss
