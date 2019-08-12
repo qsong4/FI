@@ -196,6 +196,112 @@ def multihead_attention(queries, keys, values,
  
     return outputs
 
+def CNN(x, out_channels, filter_size, pooling_size, add_relu=True):
+    '''Add a convlution layer with relu and max pooling layer.
+    Args:
+        x: a tensor with shape [batch, in_height, in_width, in_channels]
+        out_channels: a number
+        filter_size: a number
+        pooling_size: a number
+    Returns:
+        a flattened tensor with shape [batch, num_features]
+    Raises:
+    '''
+    #calculate the last dimension of return
+    num_features = ((tf.shape(x)[1]-filter_size+1)/pooling_size *
+        (tf.shape(x)[2]-filter_size+1)/pooling_size) * out_channels
+
+    in_channels = x.shape[-1]
+    weights = tf.get_variable(
+        name='filter',
+        shape=[filter_size, filter_size, in_channels, out_channels],
+        dtype=tf.float32,
+        initializer=tf.random_uniform_initializer(-0.01, 0.01))
+    bias = tf.get_variable(
+        name='bias',
+        shape=[out_channels],
+        dtype=tf.float32,
+        initializer=tf.zeros_initializer())
+
+    conv = tf.nn.conv2d(x, weights, strides=[1, 1, 1, 1], padding="VALID")
+    conv = conv + bias
+
+    if add_relu:
+        conv = tf.nn.relu(conv)
+
+    pooling = tf.nn.max_pool(
+        conv,
+        ksize=[1, pooling_size, pooling_size, 1],
+        strides=[1, pooling_size, pooling_size, 1],
+        padding="VALID")
+
+    return tf.contrib.layers.flatten(pooling)
+
+
+def CNN_3d(x, out_channels_0, out_channels_1, add_relu=True):
+    '''Add a 3d convlution layer with relu and max pooling layer.
+    Args:
+        x: a tensor with shape [batch, in_depth, in_height, in_width, in_channels]
+        out_channels: a number
+        filter_size: a number
+        pooling_size: a number
+    Returns:
+        a flattened tensor with shape [batch, num_features]
+    Raises:
+    '''
+    in_channels = x.shape[-1]
+    weights_0 = tf.get_variable(
+        name='filter_0',
+        shape=[3, 3, 3, in_channels, out_channels_0],
+        dtype=tf.float32,
+        initializer=tf.random_uniform_initializer(-0.01, 0.01))
+    bias_0 = tf.get_variable(
+        name='bias_0',
+        shape=[out_channels_0],
+        dtype=tf.float32,
+        initializer=tf.zeros_initializer())
+
+    conv_0 = tf.nn.conv3d(x, weights_0, strides=[1, 1, 1, 1, 1], padding="SAME")
+    print('conv_0 shape: %s' %conv_0.shape)
+    conv_0 = conv_0 + bias_0
+
+    if add_relu:
+        conv_0 = tf.nn.elu(conv_0)
+
+    pooling_0 = tf.nn.max_pool3d(
+        conv_0,
+        ksize=[1, 3, 3, 3, 1],
+        strides=[1, 3, 3, 3, 1],
+        padding="SAME")
+    print('pooling_0 shape: %s' %pooling_0.shape)
+
+    #layer_1
+    weights_1 = tf.get_variable(
+        name='filter_1',
+        shape=[3, 3, 3, out_channels_0, out_channels_1],
+        dtype=tf.float32,
+        initializer=tf.random_uniform_initializer(-0.01, 0.01))
+    bias_1 = tf.get_variable(
+        name='bias_1',
+        shape=[out_channels_1],
+        dtype=tf.float32,
+        initializer=tf.zeros_initializer())
+
+    conv_1 = tf.nn.conv3d(pooling_0, weights_1, strides=[1, 1, 1, 1, 1], padding="SAME")
+    print('conv_1 shape: %s' %conv_1.shape)
+    conv_1 = conv_1 + bias_1
+
+    if add_relu:
+        conv_1 = tf.nn.elu(conv_1)
+
+    pooling_1 = tf.nn.max_pool3d(
+        conv_1,
+        ksize=[1, 3, 3, 3, 1],
+        strides=[1, 3, 3, 3, 1],
+        padding="SAME")
+    print('pooling_1 shape: %s' %pooling_1.shape)
+
+    return tf.contrib.layers.flatten(pooling_1)
 
 def inter_multihead_attention(queries, keys, values,
                         num_heads=8,

@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 from data_load import load_vocab, loadGloVe, load_char_vocab
-from modules import get_token_embeddings, ff, positional_encoding, multihead_attention, inter_multihead_attention, ln, positional_encoding_bert, noam_scheme
+from modules import get_token_embeddings, ff, positional_encoding, CNN_3d, multihead_attention, inter_multihead_attention, ln, positional_encoding_bert, noam_scheme
 from matching import match_passage_with_question, localInference, calculate_rele
 from tensorflow.python.ops import nn_ops
 
@@ -257,16 +257,19 @@ class FI:
 
             x_layer = []
             y_layer = []
-            x_layer.append(encx)
-            y_layer.append(ency)
+            #x_layer.append(encx)
+            #y_layer.append(ency)
 
             # 这两个模块可以互换
             # Inter Inference Block
             for i in range(self.hp.num_inter_blocks):
                 encx, ency = self.inter_blocks(encx, ency, x_layer, y_layer, i, scope="num_inter_blocks_{}".format(i))
-                x_layer.append(encx)
-                y_layer.append(ency)
+                #x_layer.append(encx)
+                #y_layer.append(ency)
 
+
+            x_layer.append(encx)
+            y_layer.append(ency)
             ae_loss_total = 0
 
             # Inference Block
@@ -277,8 +280,10 @@ class FI:
                 y_layer.append(ency)
                 ae_loss_total += ae_loss
 
+
+
         # return x_layer, y_layer
-        return encx, ency, ae_loss_total/2*len(self.AE_layer)
+        return x_layer, y_layer, ae_loss_total/2*len(self.AE_layer)
 
     def dense_blocks(self, a_repre, b_repre, x_layer, y_layer, layer_num, scope, reuse=tf.AUTO_REUSE):
         with tf.variable_scope(scope, reuse=reuse):
@@ -302,25 +307,17 @@ class FI:
 
 
 
-            # # self-attention
-            # ency = multihead_attention(queries=_encx,
-            #                            keys=_ency,
-            #                            values=_ency,
-            #                            num_heads=self.hp.num_heads,
-            #                            dropout_rate=self.hp.dropout_rate,
-            #                            training=self.is_training,
-            #                            causality=False)
-            #
-            # # self-attention
-            # encx = multihead_attention(queries=_ency,
-            #                            keys=_encx,
-            #                            values=_encx,
-            #                            num_heads=self.hp.num_heads,
-            #                            dropout_rate=self.hp.dropout_rate,
-            #                            training=self.is_training,
-            #                            causality=False)
-            #inter attention
-            encx, ency = inter_multihead_attention(queries=_ency,
+            # self-attention
+            ency = multihead_attention(queries=_encx,
+                                       keys=_ency,
+                                       values=_ency,
+                                       num_heads=self.hp.num_heads,
+                                       dropout_rate=self.hp.dropout_rate,
+                                       training=self.is_training,
+                                       causality=False)
+
+            # self-attention
+            encx = multihead_attention(queries=_ency,
                                        keys=_encx,
                                        values=_encx,
                                        num_heads=self.hp.num_heads,
@@ -618,37 +615,37 @@ class FI:
 
     def inter_blocks(self, a_repre, b_repre, x_layer, y_layer, layer_num, scope, reuse=tf.AUTO_REUSE):
         with tf.variable_scope(scope, reuse=reuse):
-            encx, ency = inter_multihead_attention(queries=b_repre,
-                                       keys=a_repre,
-                                       values=a_repre,
-                                       num_heads=self.hp.num_heads,
-                                       dropout_rate=self.hp.dropout_rate,
-                                       training=self.is_training,
-                                       causality=False)
-
-            # self-attention
-            # encx = multihead_attention(queries=b_repre,
+            # encx, ency = inter_multihead_attention(queries=b_repre,
             #                            keys=a_repre,
             #                            values=a_repre,
             #                            num_heads=self.hp.num_heads,
             #                            dropout_rate=self.hp.dropout_rate,
             #                            training=self.is_training,
             #                            causality=False)
-            # feed forward
+
+            # self-attention
+            encx = multihead_attention(queries=b_repre,
+                                       keys=a_repre,
+                                       values=a_repre,
+                                       num_heads=self.hp.num_heads,
+                                       dropout_rate=self.hp.dropout_rate,
+                                       training=self.is_training,
+                                       causality=False)
+            #feed forward
             encx = ff(encx, num_units=[self.hp.d_ff, self.hp.d_model])
 
             # self-attention
-            # ency = multihead_attention(queries=a_repre,
-            #                            keys=b_repre,
-            #                            values=b_repre,
-            #                            num_heads=self.hp.num_heads,
-            #                            dropout_rate=self.hp.dropout_rate,
-            #                            training=self.is_training,
-            #                            causality=False)
-            # feed forward
+            ency = multihead_attention(queries=a_repre,
+                                       keys=b_repre,
+                                       values=b_repre,
+                                       num_heads=self.hp.num_heads,
+                                       dropout_rate=self.hp.dropout_rate,
+                                       training=self.is_training,
+                                       causality=False)
+            #feed forward
             ency = ff(ency, num_units=[self.hp.d_ff, self.hp.d_model])
 
-            encx, ency, ae_loss = self._dense_infer(encx, ency, x_layer, y_layer, layer_num)
+            #encx, ency, ae_loss = self._dense_infer(encx, ency, x_layer, y_layer, layer_num)
 
             #encx, ency = self._infer(encx, ency)
 
@@ -738,6 +735,22 @@ class FI:
         # representation
         x_repre, y_repre, ae_loss = self.representation(self.x, self.y)  # (layers, batchsize, maxlen, d_model)
 
+        x_repre = tf.stack(x_repre, axis=-1)
+        y_repre = tf.stack(y_repre, axis=-1)
+
+        # calculate similarity matrix
+        with tf.variable_scope('similarity'):
+            # sim shape [batch, max_turn_len, max_turn_len, 2*stack_num+1]
+            # divide sqrt(200) to prevent gradient explosion
+            sim = tf.einsum('biks,bjks->bijs', x_repre, y_repre) / tf.sqrt(200.0)
+
+        sim = tf.stack([sim], axis=1)
+        print("sim: ", sim.shape)
+
+        agg_res = CNN_3d(sim, 32, 16)
+
+        print("agg_res:", agg_res.shape)
+
         # BN
         # x_repre = tf.layers.batch_normalization(x_repre, training=self.is_training, name='bn1', reuse=tf.AUTO_REUSE)
         # y_repre = tf.layers.batch_normalization(y_repre, training=self.is_training, name='bn2', reuse=tf.AUTO_REUSE)
@@ -746,15 +759,15 @@ class FI:
         #x_repre = self.aggregation(x_repre, x_repre)
         #y_repre = self.aggregation(y_repre, y_repre)
 
-        print("x_repre: ", x_repre.shape)
+        #print("x_repre: ", x_repre.shape)
 
-        avg_x = tf.reduce_mean(x_repre, axis=1)
+        #avg_x = tf.reduce_mean(x_repre, axis=1)
         #max_x = tf.reduce_max(x_repre, axis=1)
-        avg_y = tf.reduce_mean(y_repre, axis=1)
+        #avg_y = tf.reduce_mean(y_repre, axis=1)
         #max_y = tf.reduce_max(y_repre, axis=1)
         # substract_xy = tf.subtract(max_x, max_y)
         # add_xy = tf.add(max_x, max_y)
-        agg_res = tf.concat([avg_x, avg_y], axis=1)
+        #agg_res = tf.concat([avg_x, avg_y], axis=1)
         logits = self.fc(agg_res, match_dim=agg_res.shape.as_list()[-1])
         #logits = self.fc_2l(agg_res, num_units=[self.hp.d_model, self.hp.num_class], scope="fc_2l")
         return logits, ae_loss
