@@ -32,7 +32,7 @@ class Hparams:
     parser.add_argument('--preembedding', default=False, type=bool) #本地测试使用
     #parser.add_argument('--preembedding', default=True, type=bool) #实际训练使用
     parser.add_argument('--early_stop', default=20, type=int)
-    parser.add_argument('--char_embedding', default=True, type=bool)
+    parser.add_argument('--char_embedding', default=False, type=bool)
     parser.add_argument('--char_dim', default=20, type=int)
 
     #learning rate 0.0003 is too high
