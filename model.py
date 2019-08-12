@@ -237,8 +237,8 @@ class FI:
             if self.hp.char_embedding:
                 encx = tf.concat([encx, x_char_emb], axis=-1)
 
-            encx = tf.layers.dense(encx, self.hp.d_model, activation=tf.nn.relu,
-                                   kernel_initializer=tf.truncated_normal_initializer(stddev=0.02))
+                encx = tf.layers.dense(encx, self.hp.d_model, activation=tf.nn.relu,
+                                       kernel_initializer=tf.truncated_normal_initializer(stddev=0.02))
             encx = tf.layers.dropout(encx, self.hp.dropout_rate, training=self.is_training)
 
             ency = tf.nn.embedding_lookup(self.embeddings, y)  # (N, T1, d_model)
@@ -248,8 +248,8 @@ class FI:
             ency += positional_encoding_bert(ency, self.hp.maxlen)
             if self.hp.char_embedding:
                 ency = tf.concat([ency, y_char_emb], axis=-1)
-            ency = tf.layers.dense(ency, self.hp.d_model, activation=tf.nn.relu,
-                                   kernel_initializer=tf.truncated_normal_initializer(stddev=0.02))
+                ency = tf.layers.dense(ency, self.hp.d_model, activation=tf.nn.relu,
+                                       kernel_initializer=tf.truncated_normal_initializer(stddev=0.02))
             ency = tf.layers.dropout(ency, self.hp.dropout_rate, training=self.is_training)
             # add ln
             encx = ln(encx)
