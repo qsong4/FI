@@ -17,7 +17,8 @@ class FI:
         self.hp = hp
         self.AE_layer = list(map(int, self.hp.ae_layer.split(",")))
         self.token2idx, self.idx2token, self.hp.vocab_size = load_vocab(hp.vocab)
-        _, _, self.char_vocab_size = load_char_vocab(hp.char_vocab)
+        if self.hp.char_embedding:
+            _, _, self.char_vocab_size = load_char_vocab(hp.char_vocab)
         self.embd = None
         if self.hp.preembedding:
             self.embd = loadGloVe(self.hp.vec_path)
