@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 from data_load import load_vocab, loadGloVe, load_char_vocab
-from modules import get_token_embeddings, ff, positional_encoding, CNN_3d, multihead_attention, inter_multihead_attention, ln, positional_encoding_bert, noam_scheme
+from modules import get_token_embeddings, ff, positional_encoding, CNN_3d, CNN, multihead_attention, inter_multihead_attention, ln, positional_encoding_bert, noam_scheme
 from matching import match_passage_with_question, localInference, calculate_rele
 from tensorflow.python.ops import nn_ops
 
@@ -744,10 +744,11 @@ class FI:
             # divide sqrt(200) to prevent gradient explosion
             sim = tf.einsum('biks,bjks->bijs', x_repre, y_repre) / tf.sqrt(200.0)
 
-        sim = tf.stack([sim], axis=1)
+        #sim = tf.stack([sim], axis=1)
         print("sim: ", sim.shape)
 
-        agg_res = CNN_3d(sim, 32, 16)
+        #agg_res = CNN_3d(sim, 32, 16)
+        agg_res = CNN(sim, 32, 12)
 
         print("agg_res:", agg_res.shape)
 

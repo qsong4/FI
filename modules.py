@@ -196,7 +196,7 @@ def multihead_attention(queries, keys, values,
  
     return outputs
 
-def CNN(x, out_channels, filter_size, pooling_size, add_relu=True):
+def CNN(x, out_channels_0, out_channels_1, add_relu=True):
     '''Add a convlution layer with relu and max pooling layer.
     Args:
         x: a tensor with shape [batch, in_height, in_width, in_channels]
@@ -207,19 +207,16 @@ def CNN(x, out_channels, filter_size, pooling_size, add_relu=True):
         a flattened tensor with shape [batch, num_features]
     Raises:
     '''
-    #calculate the last dimension of return
-    num_features = ((tf.shape(x)[1]-filter_size+1)/pooling_size *
-        (tf.shape(x)[2]-filter_size+1)/pooling_size) * out_channels
 
     in_channels = x.shape[-1]
     weights = tf.get_variable(
         name='filter',
-        shape=[filter_size, filter_size, in_channels, out_channels],
+        shape=[3, 3, in_channels, out_channels_0],
         dtype=tf.float32,
         initializer=tf.random_uniform_initializer(-0.01, 0.01))
     bias = tf.get_variable(
         name='bias',
-        shape=[out_channels],
+        shape=[out_channels_0],
         dtype=tf.float32,
         initializer=tf.zeros_initializer())
 
@@ -231,11 +228,35 @@ def CNN(x, out_channels, filter_size, pooling_size, add_relu=True):
 
     pooling = tf.nn.max_pool(
         conv,
-        ksize=[1, pooling_size, pooling_size, 1],
-        strides=[1, pooling_size, pooling_size, 1],
+        ksize=[1, 3, 3, 1],
+        strides=[1, 3, 3, 1],
         padding="VALID")
 
-    return tf.contrib.layers.flatten(pooling)
+
+    weights_0 = tf.get_variable(
+        name='filter_0',
+        shape=[3, 3, out_channels_0, out_channels_1],
+        dtype=tf.float32,
+        initializer=tf.random_uniform_initializer(-0.01, 0.01))
+    bias_0 = tf.get_variable(
+        name='bias_0',
+        shape=[out_channels_1],
+        dtype=tf.float32,
+        initializer=tf.zeros_initializer())
+
+    conv_0 = tf.nn.conv2d(pooling, weights_0, strides=[1, 1, 1, 1], padding="VALID")
+    conv_0 = conv_0 + bias_0
+
+    if add_relu:
+        conv_0 = tf.nn.relu(conv_0)
+
+    pooling_0 = tf.nn.max_pool(
+        conv_0,
+        ksize=[1, 3, 3, 1],
+        strides=[1, 3, 3, 1],
+        padding="VALID")
+
+    return tf.contrib.layers.flatten(pooling_0)
 
 
 def CNN_3d(x, out_channels_0, out_channels_1, add_relu=True):
