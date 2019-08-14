@@ -283,7 +283,7 @@ class FI:
 
 
         # return x_layer, y_layer
-        return x_layer, y_layer, ae_loss_total/2*len(self.AE_layer)
+        return encx, encx, ae_loss_total/2*len(self.AE_layer)
 
     def dense_blocks(self, a_repre, b_repre, x_layer, y_layer, layer_num, scope, reuse=tf.AUTO_REUSE):
         with tf.variable_scope(scope, reuse=reuse):
@@ -735,29 +735,29 @@ class FI:
         # representation
         x_repre, y_repre, ae_loss = self.representation(self.x, self.y)  # (layers, batchsize, maxlen, d_model)
 
-        x_repre = tf.stack(x_repre, axis=-1)
-        y_repre = tf.stack(y_repre, axis=-1)
+        # x_repre = tf.stack(x_repre, axis=-1)
+        # y_repre = tf.stack(y_repre, axis=-1)
 
         # calculate similarity matrix
-        with tf.variable_scope('similarity'):
-            # sim shape [batch, max_turn_len, max_turn_len, 2*stack_num+1]
-            # divide sqrt(200) to prevent gradient explosion
-            sim = tf.einsum('biks,bjks->bijs', x_repre, y_repre) / tf.sqrt(200.0)
+        # with tf.variable_scope('similarity'):
+        #     # sim shape [batch, max_turn_len, max_turn_len, 2*stack_num+1]
+        #     # divide sqrt(200) to prevent gradient explosion
+        #     sim = tf.einsum('biks,bjks->bijs', x_repre, y_repre) / tf.sqrt(200.0)
 
         #sim = tf.stack([sim], axis=1)
-        print("sim: ", sim.shape)
 
         #agg_res = CNN_3d(sim, 32, 16)
-        agg_res = CNN(sim, 32, 12)
-
-        print("agg_res:", agg_res.shape)
+        #agg_res = CNN(sim, 32, 12)
 
         # BN
         # x_repre = tf.layers.batch_normalization(x_repre, training=self.is_training, name='bn1', reuse=tf.AUTO_REUSE)
         # y_repre = tf.layers.batch_normalization(y_repre, training=self.is_training, name='bn2', reuse=tf.AUTO_REUSE)
 
+        concat_xy = tf.concat([x_repre, y_repre], axis=-1)
+        #concat_xy = self._project_op(concat_xy)
+
         # aggre
-        #x_repre = self.aggregation(x_repre, x_repre)
+        agg_repre = self.aggregation(concat_xy, concat_xy)
         #y_repre = self.aggregation(y_repre, y_repre)
 
         #print("x_repre: ", x_repre.shape)
@@ -769,6 +769,7 @@ class FI:
         # substract_xy = tf.subtract(max_x, max_y)
         # add_xy = tf.add(max_x, max_y)
         #agg_res = tf.concat([avg_x, avg_y], axis=1)
+        agg_res = tf.reduce_mean(agg_repre, axis=1)
         logits = self.fc(agg_res, match_dim=agg_res.shape.as_list()[-1])
         #logits = self.fc_2l(agg_res, num_units=[self.hp.d_model, self.hp.num_class], scope="fc_2l")
         return logits, ae_loss
